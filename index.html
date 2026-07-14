@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>個人行事曆／待辦事項管理工具</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <h1>📋 我的待辦事項</h1>
+      <p class="app-subtitle">個人行事曆／待辦事項管理工具（MVP）</p>
+    </header>
+
+    <main class="app-main">
+      <!-- ============ 待辦事項區塊 ============ -->
+      <section class="panel" aria-labelledby="todo-heading">
+        <h2 id="todo-heading" class="panel-title">待辦事項</h2>
+
+        <form id="todo-form" class="todo-form">
+          <div class="field">
+            <label for="todo-title">事項名稱</label>
+            <input
+              type="text"
+              id="todo-title"
+              name="title"
+              placeholder="輸入待辦事項..."
+              required
+              maxlength="200"
+            />
+          </div>
+          <div class="field field-date">
+            <label for="todo-due-date">截止日期</label>
+            <input type="date" id="todo-due-date" name="dueDate" required />
+          </div>
+          <button type="submit" class="btn btn-primary">新增</button>
+        </form>
+
+        <ul id="todo-list" class="todo-list"></ul>
+        <p id="todo-empty" class="empty-state" hidden>目前沒有待辦事項，新增一筆開始吧！</p>
+      </section>
+
+      <!-- ============ AI 行程規劃對話區 ============ -->
+      <section class="panel" aria-labelledby="chat-heading">
+        <h2 id="chat-heading" class="panel-title">AI 行程規劃助理</h2>
+        <p class="panel-hint">
+          目前為預留介面，AI 回覆為 mock 訊息。未來將串接 Claude API，
+          並以目前的待辦事項作為對話上下文。
+        </p>
+
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+
+        <form id="chat-form" class="chat-form">
+          <input
+            type="text"
+            id="chat-input"
+            name="message"
+            placeholder="輸入訊息，詢問 AI 關於你的行程安排..."
+            autocomplete="off"
+            maxlength="1000"
+            required
+          />
+          <button type="submit" class="btn btn-primary">送出</button>
+        </form>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>資料儲存在你目前瀏覽器的 localStorage 中，僅限本機使用。</p>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
