@@ -47,8 +47,16 @@ function saveToStorage(key, value) {
  * 狀態 (State)
  * ========================================================================== */
 
-/** @type {Array<{id:string, title:string, dueDate:string, createdAt:string, updatedAt:string}>} */
-let todos = loadFromStorage(STORAGE_KEYS.todos, []);
+/**
+ * completedAt 為 ISO 時間字串代表已完成（並記錄完成時間），null 代表未完成。
+ * 用時間戳記而非布林值，未來可以直接顯示或統計「何時完成」。
+ * @type {Array<{id:string, title:string, dueDate:string, createdAt:string, updatedAt:string, completedAt:string|null}>}
+ */
+let todos = loadFromStorage(STORAGE_KEYS.todos, []).map((t) => ({
+  // 舊版資料沒有 completedAt 欄位，讀取時補上 null 以保持相容。
+  completedAt: null,
+  ...t,
+}));
 
 /** @type {Array<{id:string, role:'user'|'ai', content:string, createdAt:string}>} */
 let chatMessages = loadFromStorage(STORAGE_KEYS.chatMessages, []);
@@ -86,12 +94,22 @@ function isOverdue(dueDate) {
 
 /**
  * 排序規則：
+ *   0. 未完成事項優先，已完成事項一律沉到清單底部
+ *      （已完成者之間依完成時間新到舊排序，最近完成的在前）
  *   1. 未到期事項優先（尚未過期的排在已過期的前面）
  *   2. 依截止日期由近到遠排序
  *   3. 相同日期依建立時間排序（先建立的在前）
  */
 function sortTodos(list) {
   return [...list].sort((a, b) => {
+    const aDone = Boolean(a.completedAt);
+    const bDone = Boolean(b.completedAt);
+    if (aDone !== bDone) {
+      return aDone ? 1 : -1;
+    }
+    if (aDone && bDone) {
+      return new Date(b.completedAt) - new Date(a.completedAt);
+    }
     const aOverdue = isOverdue(a.dueDate);
     const bOverdue = isOverdue(b.dueDate);
     if (aOverdue !== bOverdue) {
@@ -113,6 +131,7 @@ function addTodo(title, dueDate) {
     dueDate,
     createdAt: now,
     updatedAt: now,
+    completedAt: null,
   };
   todos.push(todo);
   persistTodos();
@@ -125,6 +144,14 @@ function updateTodo(id, changes) {
   Object.assign(todo, changes, { updatedAt: new Date().toISOString() });
   persistTodos();
   renderTodos();
+}
+
+function toggleTodoCompleted(id) {
+  const todo = todos.find((t) => t.id === id);
+  if (!todo) return;
+  updateTodo(id, {
+    completedAt: todo.completedAt ? null : new Date().toISOString(),
+  });
 }
 
 function deleteTodo(id) {
@@ -170,7 +197,13 @@ function renderTodos() {
 
   sorted.forEach((todo) => {
     const li = document.createElement("li");
-    li.className = "todo-item" + (isOverdue(todo.dueDate) ? " is-overdue" : "");
+    li.className = "todo-item";
+    if (todo.completedAt) {
+      li.classList.add("is-completed");
+    } else if (isOverdue(todo.dueDate)) {
+      // 已完成的事項不再標示過期，避免視覺上互相干擾。
+      li.classList.add("is-overdue");
+    }
     li.dataset.id = todo.id;
 
     if (editingId === todo.id) {
@@ -186,6 +219,21 @@ function renderTodos() {
 function buildDisplayRow(todo) {
   const wrapper = document.createDocumentFragment();
 
+  const checkboxLabel = document.createElement("label");
+  checkboxLabel.className = "todo-checkbox";
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = Boolean(todo.completedAt);
+  checkbox.setAttribute(
+    "aria-label",
+    `${todo.completedAt ? "取消完成" : "標記完成"}：${todo.title}`
+  );
+  checkbox.addEventListener("change", () => {
+    toggleTodoCompleted(todo.id);
+  });
+  checkboxLabel.appendChild(checkbox);
+
   const main = document.createElement("div");
   main.className = "todo-main";
 
@@ -199,13 +247,20 @@ function buildDisplayRow(todo) {
   const due = document.createElement("span");
   due.className = "todo-due";
   due.textContent = `截止：${formatDate(todo.dueDate)}${
-    isOverdue(todo.dueDate) ? "（已過期）" : ""
+    !todo.completedAt && isOverdue(todo.dueDate) ? "（已過期）" : ""
   }`;
 
   const created = document.createElement("span");
   created.textContent = `建立：${formatDateTime(todo.createdAt)}`;
 
   meta.append(due, created);
+
+  if (todo.completedAt) {
+    const completed = document.createElement("span");
+    completed.textContent = `完成：${formatDateTime(todo.completedAt)}`;
+    meta.appendChild(completed);
+  }
+
   main.append(titleEl, meta);
 
   const actions = document.createElement("div");
@@ -234,7 +289,7 @@ function buildDisplayRow(todo) {
 
   const container = document.createElement("div");
   container.style.display = "contents";
-  container.append(main, actions);
+  container.append(checkboxLabel, main, actions);
   wrapper.appendChild(container);
   return wrapper;
 }
@@ -375,7 +430,8 @@ function getTodosContext() {
   return sortTodos(todos).map((t) => ({
     title: t.title,
     dueDate: t.dueDate,
-    isOverdue: isOverdue(t.dueDate),
+    isOverdue: !t.completedAt && isOverdue(t.dueDate),
+    isCompleted: Boolean(t.completedAt),
   }));
 }
 
