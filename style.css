@@ -42,6 +42,13 @@ body {
   margin-bottom: 24px;
 }
 
+.app-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .app-header h1 {
   font-size: 28px;
   margin: 0 0 4px;
@@ -51,6 +58,22 @@ body {
   margin: 0;
   color: var(--color-text-muted);
   font-size: 14px;
+}
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.user-email {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-main {
@@ -79,6 +102,45 @@ body {
   margin: 0 0 16px;
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+/* ==========================================================================
+   Auth screen
+   ========================================================================== */
+.auth-panel {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.auth-form .field {
+  flex: 1 1 auto;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.auth-actions .btn {
+  flex: 1;
+}
+
+.auth-message {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.auth-message.is-error {
+  color: var(--color-danger);
 }
 
 /* ==========================================================================
