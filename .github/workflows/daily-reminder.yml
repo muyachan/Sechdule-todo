@@ -1,0 +1,29 @@
+name: Daily Todo Reminder to Discord
+
+on:
+  schedule:
+    # GitHub Actions 的 cron 一律使用 UTC 時間。
+    # 台灣時間 (Asia/Taipei, UTC+8) 早上 07:00 = 前一天 UTC 23:00。
+    # 07:00 - 8 小時 = 23:00（前一日），所以是 "0 23 * * *"。
+    - cron: "0 23 * * *"
+  # 保留手動觸發，方便隨時測試。
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Send daily reminder to Discord
+        env:
+          SUPABASE_URL: "https://qvokiftcyeptmokvrxcp.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: node scripts/daily-reminder.mjs
