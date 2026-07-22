@@ -405,8 +405,8 @@ todoFormEl.addEventListener("submit", (e) => {
 
 const CHAT_STORAGE_KEY = "schedule-todo:chatMessages";
 
-// Edge Function 端點：<專案 URL>/functions/v1/chat
-const CHAT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/chat`;
+// Edge Function 端點：<專案 URL>/functions/v1/bright-worker
+const CHAT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/bright-worker`;
 
 // 每次最多送出最近幾則對話歷史給後端（控制 API 成本）。
 const CHAT_HISTORY_LIMIT = 20;
