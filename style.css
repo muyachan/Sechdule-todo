@@ -400,6 +400,36 @@ input[type="date"]:focus {
   padding: 12px 0;
 }
 
+/* 「思考中...」狀態泡泡 */
+.chat-message.chat-pending {
+  color: var(--color-text-muted);
+  font-style: italic;
+  animation: chat-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes chat-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 錯誤泡泡 */
+.chat-message.chat-error {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* 送出中停用狀態 */
+.chat-form input:disabled,
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .chat-form {
   display: flex;
   gap: 8px;

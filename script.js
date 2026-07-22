@@ -400,10 +400,23 @@ todoFormEl.addEventListener("submit", (e) => {
 });
 
 /* ==========================================================================
- * AI 行程規劃對話區 (Chat) —— 維持 mock，暫存於 localStorage
+ * AI 行程規劃對話區 (Chat) —— 呼叫 Supabase Edge Function，對話歷史存 localStorage
  * ========================================================================== */
 
 const CHAT_STORAGE_KEY = "schedule-todo:chatMessages";
+
+// Edge Function 端點：<專案 URL>/functions/v1/chat
+const CHAT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/chat`;
+
+// 每次最多送出最近幾則對話歷史給後端（控制 API 成本）。
+const CHAT_HISTORY_LIMIT = 20;
+
+// 送出中旗標：避免使用者重複送出（含按 Enter 重送）。
+let isChatBusy = false;
+
+// 送出按鈕與「思考中...」暫時泡泡的參照。
+const chatSubmitBtn = chatFormEl.querySelector('button[type="submit"]');
+let chatPendingBubble = null;
 
 /** @type {Array<{id:string, role:'user'|'ai', content:string, createdAt:string}>} */
 let chatMessages = loadChatFromStorage();
@@ -468,26 +481,7 @@ function renderChatMessages() {
   chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
 }
 
-/**
- * -----------------------------------------------------------------------
- * 【未來 Claude API 介接點】
- * -----------------------------------------------------------------------
- * 目前回傳 mock 的 AI 回覆字串。未來串接 Claude API 時：
- *   1. 呼叫 getTodosContext() 取得目前所有待辦事項作為上下文。
- *   2. 將使用者訊息 + 待辦事項上下文送給後端 Claude API 代理服務
- *      （前端不可直接夾帶 API Key 呼叫）。
- *   3. 等待回覆後呼叫 addChatMessage('ai', 回覆內容)。
- */
-async function getAIResponse(userMessage) {
-  const todosContext = getTodosContext();
-  void userMessage;
-  void todosContext;
-
-  // TODO(未來): 改為呼叫後端 Claude API 代理服務並回傳真正的 AI 回覆。
-  return "未來 Claude API 將會根據目前待辦事項提供建議。";
-}
-
-/** 整理目前所有待辦事項成為 AI 對話上下文（預留給未來串接 Claude API）。 */
+/** 整理目前所有待辦事項成為 AI 對話上下文，送給 Edge Function。 */
 function getTodosContext() {
   return sortTodos(todos).map((t) => ({
     title: t.title,
@@ -497,17 +491,127 @@ function getTodosContext() {
   }));
 }
 
+/**
+ * 將本地聊天訊息轉成 Edge Function 需要的格式。
+ * 本地 role 使用 'user' / 'ai'，這裡把 'ai' 對應成 LLM 慣用的 'assistant'。
+ * @param {Array<{role:'user'|'ai', content:string}>} list
+ */
+function toApiMessages(list) {
+  return list.map((m) => ({
+    role: m.role === "user" ? "user" : "assistant",
+    content: m.content,
+  }));
+}
+
+/** 顯示 / 移除「思考中...」暫時泡泡（不納入 chatMessages，不會被存到 localStorage）。 */
+function showChatThinking() {
+  const bubble = document.createElement("div");
+  bubble.className = "chat-message ai chat-pending";
+  bubble.textContent = "思考中...";
+  chatMessagesEl.appendChild(bubble);
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  chatPendingBubble = bubble;
+}
+
+function hideChatThinking() {
+  if (chatPendingBubble && chatPendingBubble.parentNode) {
+    chatPendingBubble.parentNode.removeChild(chatPendingBubble);
+  }
+  chatPendingBubble = null;
+}
+
+/** 顯示一則暫時的錯誤泡泡（不存進歷史，下次送出時會被重繪清掉）。 */
+function showChatError(text) {
+  const bubble = document.createElement("div");
+  bubble.className = "chat-message ai chat-error";
+  bubble.textContent = `⚠️ ${text}`;
+  chatMessagesEl.appendChild(bubble);
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+function setChatBusy(busy) {
+  isChatBusy = busy;
+  chatSubmitBtn.disabled = busy;
+  chatInputEl.disabled = busy;
+}
+
+/**
+ * 呼叫 Supabase Edge Function 取得 AI 回覆。
+ * @param {Array<{role:string, content:string}>} messages 對話歷史（已裁切成最近 N 則）
+ * @param {Array} todosContext getTodosContext() 的結果
+ * @param {string} accessToken 目前登入者的 access token
+ * @returns {Promise<string>} AI 回覆文字
+ */
+async function callChatFunction(messages, todosContext, accessToken) {
+  const res = await fetch(CHAT_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ messages, todos: todosContext }),
+  });
+
+  // 後端可能回 { reply } 或 { error }，都嘗試解析 JSON。
+  let data = {};
+  try {
+    data = await res.json();
+  } catch (_) {
+    throw new Error(`伺服器回應無法解析 (${res.status})`);
+  }
+
+  if (data && data.error) {
+    throw new Error(data.error);
+  }
+  if (!res.ok) {
+    throw new Error(`伺服器錯誤 (${res.status})`);
+  }
+  if (!data || typeof data.reply !== "string") {
+    throw new Error("伺服器回應缺少 reply 欄位");
+  }
+  return data.reply;
+}
+
 chatFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (isChatBusy) return; // 送出中，忽略重複送出
+
   const message = chatInputEl.value.trim();
   if (!message) return;
 
   addChatMessage("user", message);
   chatFormEl.reset();
-  chatInputEl.focus();
 
-  const reply = await getAIResponse(message);
-  addChatMessage("ai", reply);
+  setChatBusy(true);
+  showChatThinking();
+
+  try {
+    // 取得目前登入者的 access token。
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const accessToken = sessionData.session
+      ? sessionData.session.access_token
+      : null;
+    if (!accessToken) {
+      throw new Error("尚未登入或登入已過期，請重新登入。");
+    }
+
+    // 只送出最近 CHAT_HISTORY_LIMIT 則歷史（含這次的使用者訊息）以控制成本。
+    const recent = chatMessages.slice(-CHAT_HISTORY_LIMIT);
+    const reply = await callChatFunction(
+      toApiMessages(recent),
+      getTodosContext(),
+      accessToken
+    );
+
+    hideChatThinking();
+    addChatMessage("ai", reply);
+  } catch (err) {
+    hideChatThinking();
+    showChatError(err.message || "發生未知錯誤，請稍後再試。");
+  } finally {
+    setChatBusy(false);
+    chatInputEl.focus();
+  }
 });
 
 /* ==========================================================================
