@@ -465,10 +465,18 @@ function renderChatMessages() {
 
   chatMessages.forEach((msg) => {
     const bubble = document.createElement("div");
-    bubble.className = `chat-message ${msg.role === "user" ? "user" : "ai"}`;
+    const isUser = msg.role === "user";
+    bubble.className = `chat-message ${isUser ? "user" : "ai"}`;
 
     const text = document.createElement("span");
-    text.textContent = msg.content;
+    if (isUser) {
+      // 使用者訊息維持純文字（textContent，天然防 XSS）。
+      text.textContent = msg.content;
+    } else {
+      // AI 回覆是 Markdown，渲染成 HTML 後顯示（含 XSS 防護）。
+      text.className = "chat-markdown";
+      text.innerHTML = renderMarkdown(msg.content);
+    }
 
     const time = document.createElement("time");
     time.className = "chat-time";
@@ -479,6 +487,31 @@ function renderChatMessages() {
   });
 
   chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+/**
+ * 將 AI 回覆的 Markdown 轉成「已消毒 (sanitized)」的 HTML。
+ * - 用 marked 解析 Markdown（支援粗體、清單、表格等）。
+ * - 用 DOMPurify 過濾掉可能的 XSS（script、onerror、javascript: 等）。
+ * 若 CDN 尚未載入或解析失敗，退回純文字，確保畫面不會壞掉。
+ * @param {string} markdown
+ * @returns {string} 安全的 HTML 字串
+ */
+function renderMarkdown(markdown) {
+  const escapeHtml = (s) =>
+    s.replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+  try {
+    if (window.marked && window.DOMPurify) {
+      const rawHtml = window.marked.parse(markdown, { breaks: true });
+      return window.DOMPurify.sanitize(rawHtml);
+    }
+  } catch (err) {
+    console.warn("Markdown 渲染失敗，退回純文字。", err);
+  }
+  return escapeHtml(markdown);
 }
 
 /** 整理目前所有待辦事項成為 AI 對話上下文，送給 Edge Function。 */
