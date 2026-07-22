@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>個人行事曆／待辦事項管理工具</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>" />
-<link rel="stylesheet" href="style.css" />
+<!-- 快取破壞 (cache busting)：?v=N 版本參數。
+     ⚠️ 每次修改 style.css / config.js / script.js 後，請把下方所有的 v=? 一起 +1，
+        使用者的瀏覽器才會抓到最新版，而不是舊的快取檔。 -->
+<link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <div class="app-shell">
@@ -80,8 +83,7 @@
       <section class="panel" aria-labelledby="chat-heading">
         <h2 id="chat-heading" class="panel-title">AI 行程規劃助理</h2>
         <p class="panel-hint">
-          目前為預留介面，AI 回覆為 mock 訊息。未來將串接 Claude API，
-          並以目前的待辦事項作為對話上下文。
+          已串接 Claude API，助理會參考你目前的待辦事項，跟你討論與規劃行程。
         </p>
 
         <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
@@ -108,7 +110,8 @@
 
   <!-- Supabase JavaScript SDK（透過 CDN 引入，純前端網頁不使用 npm / 打包工具）-->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="script.js"></script>
+  <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
+  <script src="config.js?v=7"></script>
+  <script src="script.js?v=7"></script>
 </body>
 </html>
