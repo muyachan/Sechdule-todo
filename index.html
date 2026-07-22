@@ -8,7 +8,7 @@
 <!-- 快取破壞 (cache busting)：?v=N 版本參數。
      ⚠️ 每次修改 style.css / config.js / script.js 後，請把下方所有的 v=? 一起 +1，
         使用者的瀏覽器才會抓到最新版，而不是舊的快取檔。 -->
-<link rel="stylesheet" href="style.css?v=7" />
+<link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body>
   <div class="app-shell">
@@ -110,8 +110,11 @@
 
   <!-- Supabase JavaScript SDK（透過 CDN 引入，純前端網頁不使用 npm / 打包工具）-->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Markdown 渲染：marked 負責解析、DOMPurify 負責消毒 (XSS 防護)，用來渲染 AI 回覆。 -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
-  <script src="config.js?v=7"></script>
-  <script src="script.js?v=7"></script>
+  <script src="config.js?v=8"></script>
+  <script src="script.js?v=8"></script>
 </body>
 </html>
