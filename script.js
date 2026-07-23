@@ -561,12 +561,14 @@ function persistChatMessages() {
   }
 }
 
-function addChatMessage(role, content) {
+function addChatMessage(role, content, meta = {}) {
   const message = {
     id: generateId(),
     role,
     content,
     createdAt: new Date().toISOString(),
+    // meta 可帶額外欄位（例如 todosChanged），一併保存與渲染。
+    ...meta,
   };
   chatMessages.push(message);
   persistChatMessages();
@@ -623,6 +625,14 @@ function buildChatRow(msg) {
     text.innerHTML = renderMarkdown(msg.content);
   }
   bubble.appendChild(text);
+
+  // AI 有動過待辦資料庫時，在訊息下方顯示一個小提示。
+  if (!isUser && msg.todosChanged) {
+    const notice = document.createElement("div");
+    notice.className = "chat-todos-updated";
+    notice.textContent = "📋 待辦事項已更新";
+    bubble.appendChild(notice);
+  }
 
   const time = document.createElement("time");
   time.className = "chat-time";
@@ -781,7 +791,8 @@ async function callChatFunction(messages, todosContext, accessToken) {
   if (!data || typeof data.reply !== "string") {
     throw new Error("伺服器回應缺少 reply 欄位");
   }
-  return data.reply;
+  // todosChanged 代表 AI 這次有動到待辦資料庫（新增/修改/標記完成）。
+  return { reply: data.reply, todosChanged: Boolean(data.todosChanged) };
 }
 
 chatFormEl.addEventListener("submit", async (e) => {
@@ -809,14 +820,20 @@ chatFormEl.addEventListener("submit", async (e) => {
 
     // 只送出最近 CHAT_HISTORY_LIMIT 則歷史（含這次的使用者訊息）以控制成本。
     const recent = chatMessages.slice(-CHAT_HISTORY_LIMIT);
-    const reply = await callChatFunction(
+    const { reply, todosChanged } = await callChatFunction(
       toApiMessages(recent),
       getTodosContext(),
       accessToken
     );
 
     hideChatThinking();
-    addChatMessage("ai", reply);
+    // 把 todosChanged 記在訊息上，讓「📋 待辦事項已更新」提示能一起被渲染／保存。
+    addChatMessage("ai", reply, { todosChanged });
+
+    if (todosChanged) {
+      // AI 剛動過資料庫，重新抓取待辦清單，讓使用者切到待辦分頁能看到最新結果。
+      fetchTodos();
+    }
   } catch (err) {
     hideChatThinking();
     showChatError(err.message || "發生未知錯誤，請稍後再試。");
