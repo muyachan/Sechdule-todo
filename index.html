@@ -8,7 +8,7 @@
 <!-- 快取破壞 (cache busting)：?v=N 版本參數。
      ⚠️ 每次修改 style.css / config.js / script.js 後，請把下方所有的 v=? 一起 +1，
         使用者的瀏覽器才會抓到最新版，而不是舊的快取檔。 -->
-<link rel="stylesheet" href="style.css?v=8" />
+<link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
   <div class="app-shell">
@@ -51,9 +51,47 @@
 
     <!-- ============ 主應用程式（登入後才顯示）============ -->
     <main id="app-main" class="app-main" hidden>
-      <!-- 待辦事項區塊 -->
-      <section class="panel" aria-labelledby="todo-heading">
-        <h2 id="todo-heading" class="panel-title">待辦事項</h2>
+      <!-- 分頁切換列：內容由 script.js 依 TABS 設定資料驅動產生，方便日後擴充。 -->
+      <nav id="tab-bar" class="tab-bar" role="tablist" aria-label="功能分頁"></nav>
+
+      <!-- AI 助理分頁（預設顯示）：完整聊天室版面 -->
+      <section
+        id="panel-chat"
+        class="tab-panel chat-panel panel"
+        role="tabpanel"
+        aria-labelledby="tab-btn-chat"
+      >
+        <div class="chat-panel-head">
+          <h2 class="panel-title">AI 行程規劃助理</h2>
+          <p class="panel-hint">
+            已串接 Claude API，助理會參考你目前的待辦事項，跟你討論與規劃行程。
+          </p>
+        </div>
+
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+
+        <form id="chat-form" class="chat-form">
+          <input
+            type="text"
+            id="chat-input"
+            name="message"
+            placeholder="輸入訊息，詢問 AI 關於你的行程安排..."
+            autocomplete="off"
+            maxlength="1000"
+            required
+          />
+          <button type="submit" class="btn btn-primary">送出</button>
+        </form>
+      </section>
+
+      <!-- 待辦事項分頁：功能維持不變 -->
+      <section
+        id="panel-todo"
+        class="tab-panel panel"
+        role="tabpanel"
+        aria-labelledby="tab-btn-todo"
+      >
+        <h2 class="panel-title">待辦事項</h2>
 
         <form id="todo-form" class="todo-form">
           <div class="field">
@@ -78,29 +116,6 @@
         <ul id="todo-list" class="todo-list"></ul>
         <p id="todo-empty" class="empty-state" hidden>目前沒有待辦事項，新增一筆開始吧！</p>
       </section>
-
-      <!-- AI 行程規劃對話區 -->
-      <section class="panel" aria-labelledby="chat-heading">
-        <h2 id="chat-heading" class="panel-title">AI 行程規劃助理</h2>
-        <p class="panel-hint">
-          已串接 Claude API，助理會參考你目前的待辦事項，跟你討論與規劃行程。
-        </p>
-
-        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
-
-        <form id="chat-form" class="chat-form">
-          <input
-            type="text"
-            id="chat-input"
-            name="message"
-            placeholder="輸入訊息，詢問 AI 關於你的行程安排..."
-            autocomplete="off"
-            maxlength="1000"
-            required
-          />
-          <button type="submit" class="btn btn-primary">送出</button>
-        </form>
-      </section>
     </main>
 
     <footer class="app-footer">
@@ -114,7 +129,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
-  <script src="config.js?v=8"></script>
-  <script src="script.js?v=8"></script>
+  <script src="config.js?v=9"></script>
+  <script src="script.js?v=9"></script>
 </body>
 </html>

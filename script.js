@@ -42,6 +42,7 @@ const appMainEl = document.getElementById("app-main");
 const userBarEl = document.getElementById("user-bar");
 const userEmailEl = document.getElementById("user-email");
 const logoutBtn = document.getElementById("logout-btn");
+const tabBarEl = document.getElementById("tab-bar");
 
 const todoListEl = document.getElementById("todo-list");
 const todoEmptyEl = document.getElementById("todo-empty");
@@ -67,6 +68,66 @@ const chatInputEl = document.getElementById("chat-input");
 let todos = [];
 
 let editingId = null;
+
+/* ==========================================================================
+ * 分頁 (Tabs)
+ * --------------------------------------------------------------------------
+ * 資料驅動：要新增分頁（例如「讀書計劃」「股票」），只要在 TABS 陣列加一筆，
+ * 並在 index.html 對應加一個 <section class="tab-panel" id="panel-xxx">。
+ * 切換分頁只切換顯示，不會重新抓資料。
+ *   - id：分頁識別
+ *   - label：按鈕文字（含 emoji）
+ *   - panelId：對應的內容區塊 element id
+ *   - onActivate：切到此分頁時要跑的（可選）副作用，例如捲到底
+ * ========================================================================== */
+
+const TABS = [
+  {
+    id: "chat",
+    label: "💬 AI 助理",
+    panelId: "panel-chat",
+    onActivate: () => scrollChatToBottom(),
+  },
+  { id: "todo", label: "📋 待辦事項", panelId: "panel-todo" },
+];
+
+let activeTabId = TABS[0].id;
+
+function renderTabBar() {
+  tabBarEl.innerHTML = "";
+  TABS.forEach((tab) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = `tab-btn-${tab.id}`;
+    btn.className = "tab-btn" + (tab.id === activeTabId ? " is-active" : "");
+    btn.textContent = tab.label;
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", tab.id === activeTabId ? "true" : "false");
+    btn.setAttribute("aria-controls", tab.panelId);
+    btn.addEventListener("click", () => setActiveTab(tab.id));
+    tabBarEl.appendChild(btn);
+  });
+}
+
+function setActiveTab(tabId) {
+  const target = TABS.find((t) => t.id === tabId);
+  if (!target) return;
+  activeTabId = tabId;
+
+  TABS.forEach((tab) => {
+    const isActive = tab.id === tabId;
+    const panel = document.getElementById(tab.panelId);
+    if (panel) panel.classList.toggle("is-active", isActive);
+    const btn = document.getElementById(`tab-btn-${tab.id}`);
+    if (btn) {
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    }
+  });
+
+  // 切換只影響顯示，不重新抓資料；只跑該分頁需要的輕量副作用。
+  if (typeof target.onActivate === "function") target.onActivate();
+}
 
 /* ==========================================================================
  * 工具函式
@@ -109,6 +170,67 @@ function formatDateTime(dateStr) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * 相對時間顯示：
+ *   < 1 分鐘 → 剛剛
+ *   < 60 分鐘 → N 分鐘前
+ *   今天（>= 60 分鐘）→ 今天 HH:MM
+ *   昨天 → 昨天 HH:MM
+ *   今年 → M/D HH:MM
+ *   更早 → YYYY/M/D HH:MM
+ */
+function formatRelativeTime(dateStr) {
+  const then = new Date(dateStr);
+  const now = new Date();
+  const diffSec = Math.floor((now - then) / 1000);
+
+  if (diffSec < 60) return "剛剛";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} 分鐘前`;
+
+  const hhmm = then.toLocaleTimeString("zh-TW", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const thenStart = new Date(then);
+  thenStart.setHours(0, 0, 0, 0);
+  const dayDiff = Math.round((startOfToday() - thenStart) / 86400000);
+
+  if (dayDiff <= 0) return `今天 ${hhmm}`;
+  if (dayDiff === 1) return `昨天 ${hhmm}`;
+  if (then.getFullYear() === now.getFullYear()) {
+    return `${then.getMonth() + 1}/${then.getDate()} ${hhmm}`;
+  }
+  return `${then.getFullYear()}/${then.getMonth() + 1}/${then.getDate()} ${hhmm}`;
+}
+
+/** 複製文字到剪貼簿，並在按鈕上短暫顯示「已複製」。 */
+async function copyToClipboard(text, btn) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // 舊瀏覽器或非安全來源 (http) 的退回方案。
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    const original = btn.textContent;
+    btn.textContent = "已複製";
+    setTimeout(() => {
+      btn.textContent = original;
+    }, 1500);
+  } catch (err) {
+    console.warn("複製失敗：", err);
+  }
 }
 
 /** 將 Supabase 資料表的一列 (snake_case) 轉為前端使用的 todo 物件 (camelCase)。 */
@@ -452,6 +574,67 @@ function addChatMessage(role, content) {
   return message;
 }
 
+function scrollChatToBottom() {
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+/** 建立 AI 頭像元素。 */
+function buildAvatar() {
+  const avatar = document.createElement("div");
+  avatar.className = "chat-avatar";
+  avatar.textContent = "🤖";
+  avatar.setAttribute("aria-hidden", "true");
+  return avatar;
+}
+
+/** 建立一則訊息的 row（AI 訊息含頭像、複製按鈕；使用者訊息維持純文字）。 */
+function buildChatRow(msg) {
+  const isUser = msg.role === "user";
+  const row = document.createElement("div");
+  row.className = `chat-row ${isUser ? "user" : "ai"}`;
+
+  if (!isUser) row.appendChild(buildAvatar());
+
+  const bubble = document.createElement("div");
+  bubble.className = `chat-message ${isUser ? "user" : "ai"}`;
+
+  if (!isUser) {
+    // AI 訊息右上角的「複製」按鈕（複製原始文字內容）。
+    const head = document.createElement("div");
+    head.className = "chat-bubble-head";
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "chat-copy-btn";
+    copyBtn.textContent = "複製";
+    copyBtn.setAttribute("aria-label", "複製這則 AI 回覆");
+    copyBtn.addEventListener("click", () => copyToClipboard(msg.content, copyBtn));
+    head.appendChild(copyBtn);
+    bubble.appendChild(head);
+  }
+
+  const text = document.createElement("div");
+  if (isUser) {
+    // 使用者訊息維持純文字（textContent，天然防 XSS）。
+    text.className = "chat-text";
+    text.textContent = msg.content;
+  } else {
+    // AI 回覆是 Markdown，渲染成 HTML 後顯示（含 XSS 防護）。
+    text.className = "chat-markdown";
+    text.innerHTML = renderMarkdown(msg.content);
+  }
+  bubble.appendChild(text);
+
+  const time = document.createElement("time");
+  time.className = "chat-time";
+  time.setAttribute("datetime", msg.createdAt);
+  time.title = formatDateTime(msg.createdAt); // 滑鼠移上去看完整時間
+  time.textContent = formatRelativeTime(msg.createdAt);
+  bubble.appendChild(time);
+
+  row.appendChild(bubble);
+  return row;
+}
+
 function renderChatMessages() {
   chatMessagesEl.innerHTML = "";
 
@@ -464,29 +647,19 @@ function renderChatMessages() {
   }
 
   chatMessages.forEach((msg) => {
-    const bubble = document.createElement("div");
-    const isUser = msg.role === "user";
-    bubble.className = `chat-message ${isUser ? "user" : "ai"}`;
-
-    const text = document.createElement("span");
-    if (isUser) {
-      // 使用者訊息維持純文字（textContent，天然防 XSS）。
-      text.textContent = msg.content;
-    } else {
-      // AI 回覆是 Markdown，渲染成 HTML 後顯示（含 XSS 防護）。
-      text.className = "chat-markdown";
-      text.innerHTML = renderMarkdown(msg.content);
-    }
-
-    const time = document.createElement("time");
-    time.className = "chat-time";
-    time.textContent = formatDateTime(msg.createdAt);
-
-    bubble.append(text, time);
-    chatMessagesEl.appendChild(bubble);
+    chatMessagesEl.appendChild(buildChatRow(msg));
   });
 
-  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  scrollChatToBottom();
+}
+
+/** 每分鐘更新一次相對時間文字（只更新真正的訊息，不動思考中/錯誤泡泡）。 */
+function refreshChatTimes() {
+  chatMessagesEl
+    .querySelectorAll("time.chat-time[datetime]")
+    .forEach((el) => {
+      el.textContent = formatRelativeTime(el.getAttribute("datetime"));
+    });
 }
 
 /**
@@ -536,14 +709,23 @@ function toApiMessages(list) {
   }));
 }
 
+/** 建立一個帶 AI 頭像的暫時 row（給思考中 / 錯誤泡泡共用）。 */
+function buildTransientAiRow(bubbleClass, textContent) {
+  const row = document.createElement("div");
+  row.className = "chat-row ai";
+  row.appendChild(buildAvatar());
+  const bubble = document.createElement("div");
+  bubble.className = `chat-message ai ${bubbleClass}`;
+  bubble.textContent = textContent;
+  row.appendChild(bubble);
+  return row;
+}
+
 /** 顯示 / 移除「思考中...」暫時泡泡（不納入 chatMessages，不會被存到 localStorage）。 */
 function showChatThinking() {
-  const bubble = document.createElement("div");
-  bubble.className = "chat-message ai chat-pending";
-  bubble.textContent = "思考中...";
-  chatMessagesEl.appendChild(bubble);
-  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
-  chatPendingBubble = bubble;
+  chatPendingBubble = buildTransientAiRow("chat-pending", "思考中...");
+  chatMessagesEl.appendChild(chatPendingBubble);
+  scrollChatToBottom();
 }
 
 function hideChatThinking() {
@@ -555,11 +737,8 @@ function hideChatThinking() {
 
 /** 顯示一則暫時的錯誤泡泡（不存進歷史，下次送出時會被重繪清掉）。 */
 function showChatError(text) {
-  const bubble = document.createElement("div");
-  bubble.className = "chat-message ai chat-error";
-  bubble.textContent = `⚠️ ${text}`;
-  chatMessagesEl.appendChild(bubble);
-  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  chatMessagesEl.appendChild(buildTransientAiRow("chat-error", `⚠️ ${text}`));
+  scrollChatToBottom();
 }
 
 function setChatBusy(busy) {
@@ -736,6 +915,13 @@ logoutBtn.addEventListener("click", async () => {
  * ========================================================================== */
 
 async function init() {
+  // 建立分頁列並套用預設分頁（TABS[0]，即 AI 助理）。
+  renderTabBar();
+  setActiveTab(activeTabId);
+
+  // 每分鐘更新一次聊天訊息的相對時間顯示。
+  setInterval(refreshChatTimes, 60000);
+
   // 監聽登入狀態變化（登入、登出、token 更新都會觸發）。
   supabaseClient.auth.onAuthStateChange((_event, session) => {
     renderAuthState(session ? session.user : null);
