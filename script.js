@@ -690,6 +690,9 @@ function renderMarkdown(markdown) {
 /** 整理目前所有待辦事項成為 AI 對話上下文，送給 Edge Function。 */
 function getTodosContext() {
   return sortTodos(todos).map((t) => ({
+    // id 一定要帶上：Edge Function 要修改/標記完成某筆待辦時，
+    // 需要靠這個 id 才知道要更新資料庫裡的哪一列。
+    id: t.id,
     title: t.title,
     dueDate: t.dueDate,
     isOverdue: !t.completedAt && isOverdue(t.dueDate),
@@ -755,6 +758,10 @@ function setChatBusy(busy) {
  * @returns {Promise<string>} AI 回覆文字
  */
 async function callChatFunction(messages, todosContext, accessToken) {
+  // 除錯用：印出實際要送給 Edge Function 的 todos payload，
+  // 方便確認每筆待辦事項都有帶到 id（不是 undefined）。
+  console.log("[chat] 送出的 todos payload：", todosContext);
+
   const res = await fetch(CHAT_FUNCTION_URL, {
     method: "POST",
     headers: {
