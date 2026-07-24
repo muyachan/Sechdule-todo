@@ -1,23 +1,40 @@
 /* ==========================================================================
-   Design tokens — kept close to a Notion-like aesthetic: neutral grays,
-   soft borders, generous whitespace, minimal color accents.
+   Design tokens — deep blue-green primary on a soft cream backdrop,
+   warm neutral grays, gentle rounded corners, light shadow layering.
    ========================================================================== */
 :root {
-  --color-bg: #ffffff;
-  --color-bg-subtle: #f7f7f5;
-  --color-border: #e9e9e7;
-  --color-text: #37352f;
-  --color-text-muted: #787774;
-  --color-accent: #2383e2;
-  --color-accent-hover: #1a6fc4;
-  --color-danger: #e03e3e;
-  --color-danger-hover: #c33333;
-  --color-overdue: #eb5757;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --shadow-card: 0 1px 2px rgba(15, 15, 15, 0.08);
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
-    Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  /* 頁面背景（柔和米白）與卡片表面（純白，與頁面背景拉出層次） */
+  --color-bg: #faf9f6;
+  --color-surface: #ffffff;
+  --color-bg-subtle: #f1eee6;
+
+  --color-border: #e6e1d5;
+  --color-text: #2b2a26;
+  --color-text-muted: #726f66;
+
+  /* 主色：深藍綠 */
+  --color-accent: #2c6e63;
+  --color-accent-hover: #235850;
+  --color-accent-active: #1c4a43;
+  --color-accent-soft: #e3eeec;
+  --color-accent-soft-border: #c6dbd7;
+
+  /* 語意色（柔化過，不用死板的死板紅） */
+  --color-danger: #c1483d;
+  --color-danger-hover: #a83c32;
+  --color-overdue: #d97757;
+  --color-completed: #a39c8e;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+
+  --shadow-card: 0 1px 2px rgba(43, 42, 38, 0.06), 0 6px 16px rgba(44, 110, 99, 0.07);
+  --shadow-sm: 0 1px 2px rgba(43, 42, 38, 0.06);
+
+  --font-sans: "Inter", "Noto Sans TC", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei",
+    sans-serif;
 }
 
 * {
@@ -33,7 +50,7 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   color: var(--color-text);
-  background: var(--color-bg-subtle);
+  background: var(--color-bg);
   line-height: 1.5;
 }
 
@@ -155,7 +172,7 @@ body {
    Panels
    ========================================================================== */
 .panel {
-  background: var(--color-bg);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
@@ -243,21 +260,26 @@ body {
 }
 
 input[type="text"],
-input[type="date"] {
+input[type="date"],
+input[type="email"],
+input[type="password"] {
   font-family: inherit;
   font-size: 14px;
   padding: 8px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  background: var(--color-surface);
   color: var(--color-text);
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input[type="text"]:focus,
-input[type="date"]:focus {
+input[type="date"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 .btn {
@@ -268,8 +290,13 @@ input[type="date"]:focus {
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    transform 0.05s ease, box-shadow 0.15s ease;
   white-space: nowrap;
+}
+
+.btn:active {
+  transform: translateY(1px);
 }
 
 .btn-primary {
@@ -279,10 +306,16 @@ input[type="date"]:focus {
 
 .btn-primary:hover {
   background: var(--color-accent-hover);
+  box-shadow: 0 2px 6px rgba(44, 110, 99, 0.25);
+}
+
+.btn-primary:active {
+  background: var(--color-accent-active);
+  box-shadow: none;
 }
 
 .btn-secondary {
-  background: var(--color-bg);
+  background: var(--color-surface);
   color: var(--color-text);
   border-color: var(--color-border);
 }
@@ -291,8 +324,12 @@ input[type="date"]:focus {
   background: var(--color-bg-subtle);
 }
 
+.btn-secondary:active {
+  background: var(--color-border);
+}
+
 .btn-danger {
-  background: var(--color-bg);
+  background: var(--color-surface);
   color: var(--color-danger);
   border-color: var(--color-border);
 }
@@ -301,6 +338,11 @@ input[type="date"]:focus {
   background: var(--color-danger);
   color: #fff;
   border-color: var(--color-danger);
+}
+
+.btn-danger:active {
+  background: var(--color-danger-hover);
+  border-color: var(--color-danger-hover);
 }
 
 .btn-sm {
@@ -326,8 +368,9 @@ input[type="date"]:focus {
   gap: 12px;
   padding: 10px 12px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .todo-item.is-overdue .todo-due {
@@ -338,11 +381,12 @@ input[type="date"]:focus {
 /* 已完成事項：整列變灰、標題加刪除線，與未完成事項區分 */
 .todo-item.is-completed {
   background: var(--color-bg-subtle);
+  box-shadow: none;
 }
 
 .todo-item.is-completed .todo-title {
   text-decoration: line-through;
-  color: var(--color-text-muted);
+  color: var(--color-completed);
 }
 
 .todo-item.is-completed .todo-meta {
@@ -465,7 +509,7 @@ input[type="date"]:focus {
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
 }
 
@@ -473,10 +517,11 @@ input[type="date"]:focus {
   position: relative;
   min-width: 0;
   padding: 8px 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   font-size: 14px;
   line-height: 1.4;
   word-break: break-word;
+  box-shadow: var(--shadow-sm);
 }
 
 .chat-message .chat-time {
@@ -489,14 +534,14 @@ input[type="date"]:focus {
 .chat-message.user {
   background: var(--color-accent);
   color: #fff;
-  border-bottom-right-radius: 2px;
+  border-bottom-right-radius: 4px;
 }
 
 .chat-message.ai {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-text);
-  border-bottom-left-radius: 2px;
+  border-bottom-left-radius: 4px;
 }
 
 /* AI 訊息右上角的複製按鈕 */
@@ -531,8 +576,8 @@ input[type="date"]:focus {
   padding: 2px 8px;
   font-size: 12px;
   color: var(--color-accent);
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-soft-border);
   border-radius: 999px;
 }
 
