@@ -802,6 +802,28 @@ async function callChatFunction(messages, todosContext, accessToken) {
   return { reply: data.reply, todosChanged: Boolean(data.todosChanged) };
 }
 
+/**
+ * 明確處理 Enter 送出，避免依賴瀏覽器對「input 內按 Enter 送出表單」的
+ * 預設行為在不同瀏覽器 / 輸入法下不一致（這也是中文輸入法選字時
+ * 常見「按兩次 Enter 才送出」的成因：第一次 Enter 其實是在確認選字）。
+ *   - 按 Enter 時若正在輸入法選字中（isComposing），不送出，交給輸入法處理。
+ *   - 按 Enter 且未在選字中 → 立即送出（一次就好）。
+ *   - Shift+Enter → 不送出（目前是單行 input，本來就無法換行，這裡明確
+ *     擋下即可，避免萬一被瀏覽器解讀成送出）。
+ */
+chatInputEl.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (e.isComposing || e.keyCode === 229) return; // 輸入法選字中，交給輸入法處理
+
+  // 單行 input 本來就不能換行，但按 Enter（含 Shift+Enter）在單一文字
+  // 欄位的表單中，瀏覽器預設行為就是送出表單，所以 Shift+Enter 這裡也要
+  // 明確擋下，才不會被瀏覽器的預設行為送出。
+  e.preventDefault();
+  if (e.shiftKey) return; // 保留給換行，不送出
+
+  chatFormEl.requestSubmit();
+});
+
 chatFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (isChatBusy) return; // 送出中，忽略重複送出
@@ -886,6 +908,21 @@ function renderAuthState(user) {
     todoEmptyEl.hidden = true;
   }
 }
+
+/**
+ * 明確控制 Email → 密碼 的 Tab 順序。
+ * 瀏覽器原生 Tab 順序在乾淨環境下其實是對的（Email → 密碼 → 登入），
+ * 但實務上很常見的狀況是：Email 欄位顯示瀏覽器記住的自動填入建議清單時，
+ * 按 Tab 會被瀏覽器攔截去選取建議選項，而不是移動焦點到下一個欄位。
+ * 這裡直接在按下 Tab（不含 Shift）時強制把焦點移到密碼欄位，
+ * 不管瀏覽器的自動填入下拉選單當下是否顯示，行為都一致可預期。
+ */
+authEmailEl.addEventListener("keydown", (e) => {
+  if (e.key === "Tab" && !e.shiftKey) {
+    e.preventDefault();
+    authPasswordEl.focus();
+  }
+});
 
 // 登入
 authFormEl.addEventListener("submit", async (e) => {
