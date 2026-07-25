@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- App icon 來源 SVG：簡化的行事曆 + 勾選符號，主色系配色。
+       icons/icon-192.png 與 icons/icon-512.png 皆由這份 SVG 產生。 -->
+  <rect width="512" height="512" rx="96" fill="#2C6E63" />
+  <rect x="160" y="108" width="26" height="64" rx="13" fill="#1C4A43" />
+  <rect x="326" y="108" width="26" height="64" rx="13" fill="#1C4A43" />
+  <rect x="96" y="140" width="320" height="280" rx="28" fill="#FAF9F6" />
+  <path d="M96 168a28 28 0 0 1 28-28h264a28 28 0 0 1 28 28v42H96v-42z" fill="#1C4A43" />
+  <path
+    d="M178 302 L233 357 L340 244"
+    fill="none"
+    stroke="#2C6E63"
+    stroke-width="34"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
