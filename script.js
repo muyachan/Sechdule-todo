@@ -42,7 +42,6 @@ const appMainEl = document.getElementById("app-main");
 const userBarEl = document.getElementById("user-bar");
 const userEmailEl = document.getElementById("user-email");
 const logoutBtn = document.getElementById("logout-btn");
-const tabBarEl = document.getElementById("tab-bar");
 
 const todoListEl = document.getElementById("todo-list");
 const todoEmptyEl = document.getElementById("todo-empty");
@@ -54,6 +53,8 @@ const todoDueDateInput = document.getElementById("todo-due-date");
 const chatMessagesEl = document.getElementById("chat-messages");
 const chatFormEl = document.getElementById("chat-form");
 const chatInputEl = document.getElementById("chat-input");
+const chatFabEl = document.getElementById("chat-fab");
+const chatPanelEl = document.getElementById("chat-panel");
 
 /* ==========================================================================
  * 狀態 (State)
@@ -68,66 +69,6 @@ const chatInputEl = document.getElementById("chat-input");
 let todos = [];
 
 let editingId = null;
-
-/* ==========================================================================
- * 分頁 (Tabs)
- * --------------------------------------------------------------------------
- * 資料驅動：要新增分頁（例如「讀書計劃」「股票」），只要在 TABS 陣列加一筆，
- * 並在 index.html 對應加一個 <section class="tab-panel" id="panel-xxx">。
- * 切換分頁只切換顯示，不會重新抓資料。
- *   - id：分頁識別
- *   - label：按鈕文字（含 emoji）
- *   - panelId：對應的內容區塊 element id
- *   - onActivate：切到此分頁時要跑的（可選）副作用，例如捲到底
- * ========================================================================== */
-
-const TABS = [
-  {
-    id: "chat",
-    label: "💬 AI 助理",
-    panelId: "panel-chat",
-    onActivate: () => scrollChatToBottom(),
-  },
-  { id: "todo", label: "📋 待辦事項", panelId: "panel-todo" },
-];
-
-let activeTabId = TABS[0].id;
-
-function renderTabBar() {
-  tabBarEl.innerHTML = "";
-  TABS.forEach((tab) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.id = `tab-btn-${tab.id}`;
-    btn.className = "tab-btn" + (tab.id === activeTabId ? " is-active" : "");
-    btn.textContent = tab.label;
-    btn.setAttribute("role", "tab");
-    btn.setAttribute("aria-selected", tab.id === activeTabId ? "true" : "false");
-    btn.setAttribute("aria-controls", tab.panelId);
-    btn.addEventListener("click", () => setActiveTab(tab.id));
-    tabBarEl.appendChild(btn);
-  });
-}
-
-function setActiveTab(tabId) {
-  const target = TABS.find((t) => t.id === tabId);
-  if (!target) return;
-  activeTabId = tabId;
-
-  TABS.forEach((tab) => {
-    const isActive = tab.id === tabId;
-    const panel = document.getElementById(tab.panelId);
-    if (panel) panel.classList.toggle("is-active", isActive);
-    const btn = document.getElementById(`tab-btn-${tab.id}`);
-    if (btn) {
-      btn.classList.toggle("is-active", isActive);
-      btn.setAttribute("aria-selected", isActive ? "true" : "false");
-    }
-  });
-
-  // 切換只影響顯示，不重新抓資料；只跑該分頁需要的輕量副作用。
-  if (typeof target.onActivate === "function") target.onActivate();
-}
 
 /* ==========================================================================
  * 工具函式
@@ -873,6 +814,57 @@ chatFormEl.addEventListener("submit", async (e) => {
 });
 
 /* ==========================================================================
+ * 浮動 AI 助理視窗的開關（全域元件）
+ * --------------------------------------------------------------------------
+ * 右下角圓形浮動按鈕：點擊展開／收起聊天視窗，展開時按鈕變成 ✕。
+ * 收起方式：再次點擊按鈕、點視窗外部區域、或按 ESC。
+ * 這裡只負責「顯示與否」，聊天本身的邏輯完全沿用既有程式碼。
+ * ========================================================================== */
+
+function isChatPanelOpen() {
+  return !chatPanelEl.hidden;
+}
+
+function openChatPanel() {
+  chatPanelEl.hidden = false;
+  chatFabEl.classList.add("is-open");
+  chatFabEl.textContent = "✕";
+  chatFabEl.setAttribute("aria-expanded", "true");
+  chatFabEl.setAttribute("aria-label", "關閉 AI 助理");
+  // 展開時捲到最新訊息（原本是切換到聊天分頁時做這件事）。
+  scrollChatToBottom();
+  if (!chatInputEl.disabled) chatInputEl.focus();
+}
+
+function closeChatPanel() {
+  chatPanelEl.hidden = true;
+  chatFabEl.classList.remove("is-open");
+  chatFabEl.textContent = "💬";
+  chatFabEl.setAttribute("aria-expanded", "false");
+  chatFabEl.setAttribute("aria-label", "開啟 AI 助理");
+}
+
+chatFabEl.addEventListener("click", () => {
+  if (isChatPanelOpen()) {
+    closeChatPanel();
+  } else {
+    openChatPanel();
+  }
+});
+
+// 點聊天視窗外部區域收起（點按鈕本身交給上面的 click 處理，這裡略過）。
+document.addEventListener("click", (e) => {
+  if (!isChatPanelOpen()) return;
+  if (chatPanelEl.contains(e.target) || chatFabEl.contains(e.target)) return;
+  closeChatPanel();
+});
+
+// ESC 收起。
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isChatPanelOpen()) closeChatPanel();
+});
+
+/* ==========================================================================
  * 認證 (Auth)
  * ========================================================================== */
 
@@ -902,10 +894,11 @@ function renderAuthState(user) {
     renderChatMessages();
     fetchTodos();
   } else {
-    // 登出後清掉畫面上的資料，避免殘留。
+    // 登出後清掉畫面上的資料，避免殘留，並收起浮動聊天視窗。
     todos = [];
     todoListEl.innerHTML = "";
     todoEmptyEl.hidden = true;
+    closeChatPanel();
   }
 }
 
@@ -976,10 +969,6 @@ logoutBtn.addEventListener("click", async () => {
  * ========================================================================== */
 
 async function init() {
-  // 建立分頁列並套用預設分頁（TABS[0]，即 AI 助理）。
-  renderTabBar();
-  setActiveTab(activeTabId);
-
   // 每分鐘更新一次聊天訊息的相對時間顯示。
   setInterval(refreshChatTimes, 60000);
 
