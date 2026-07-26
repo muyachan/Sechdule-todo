@@ -27,6 +27,20 @@
   /* 上／下個月延伸日期的淡出色 */
   --color-outside-month: #bdbdbd;
 
+  /* 底部導航列：選取／未選取色（變數化，之後做夜間模式只要換這裡） */
+  --color-nav-active: #7fb0d8;
+  --color-nav-inactive: #9a9a9a;
+
+  /* 底部導航列高度；加上 iOS 安全區後的總高度，供浮動元件避讓用。 */
+  --bottom-nav-height: 56px;
+  --bottom-nav-total: calc(
+    var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px)
+  );
+
+  /* 浮動按鈕尺寸與它距離底部導航列的間距（手機版會覆寫）。 */
+  --fab-size: 56px;
+  --fab-offset: 16px;
+
   /* 語意色（維持警示辨識度，不隨版面改成灰階：過期/刪除仍需要明顯區分） */
   --color-danger: #c1483d;
   --color-danger-hover: #a83c32;
@@ -75,7 +89,8 @@ body {
 .app-shell {
   max-width: 900px;
   margin: 0 auto;
-  padding: 20px 20px 16px;
+  /* 底部留出導航列（含 iOS 安全區）的高度，內容才不會被蓋住。 */
+  padding: 20px 20px calc(var(--bottom-nav-total) + 12px);
   min-height: 100vh;
   height: 100vh;
   height: 100dvh;
@@ -486,6 +501,129 @@ body {
   margin: 0;
 }
 
+/* 只有關閉鈕時，讓它靠右 */
+.drawer-head-end {
+  justify-content: flex-end;
+}
+
+/* 抽屜空狀態：置中的淺灰提示文字 */
+.drawer-empty {
+  margin: 0;
+  padding: 48px 12px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+/* ==========================================================================
+   全部待辦：全螢幕檢視（與月曆互斥，預設隱藏）
+   ========================================================================== */
+.todos-view {
+  display: none;
+}
+
+.todos-view.is-open {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.todos-view-title {
+  margin: 0 0 12px;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   底部導航列
+   --------------------------------------------------------------------------
+   五等分格子、只有圖示。前三格切換畫面（有選取狀態），後兩格是動作。
+   padding-bottom 吃 iOS 安全區，避免被 home indicator 蓋住。
+   ========================================================================== */
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  display: flex;
+  align-items: stretch;
+  height: var(--bottom-nav-total);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+
+.bottom-nav-btn {
+  position: relative;
+  flex: 1 1 0; /* 五格等寬 */
+  min-width: 0;
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--color-nav-inactive);
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+/* 前三格的選取狀態 */
+.bottom-nav-btn.is-active {
+  color: var(--color-nav-active);
+}
+
+/* 按下時的即時回饋（後兩格是動作，沒有選取狀態，只靠這個） */
+.bottom-nav-btn:active {
+  background: var(--color-bg-subtle);
+}
+
+.bottom-nav-btn svg {
+  display: block;
+}
+
+/* 切換區與動作區之間的細分隔線：畫在第 4 格左緣，
+   用絕對定位而非 border，才不會影響五格等寬。 */
+.bottom-nav-group-start::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 24px;
+  background: var(--color-border);
+}
+
+/* ==========================================================================
+   簡易提示條（佔位功能用）
+   ========================================================================== */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--bottom-nav-total) + 16px);
+  z-index: 95;
+  transform: translate(-50%, 8px);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 13px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 /* ==========================================================================
    Panels
    ========================================================================== */
@@ -786,10 +924,11 @@ input[type="password"]:focus {
 .chat-fab {
   position: fixed;
   right: 20px;
-  bottom: 20px;
+  /* 上移到底部導航列上方，避免重疊 */
+  bottom: calc(var(--bottom-nav-total) + var(--fab-offset));
   z-index: 60;
-  width: 56px;
-  height: 56px;
+  width: var(--fab-size);
+  height: var(--fab-size);
   border: none;
   border-radius: 50%;
   background: var(--color-accent);
@@ -849,10 +988,20 @@ input[type="password"]:focus {
     opacity 0.18s ease, visibility 0.26s;
   position: fixed;
   right: 20px;
-  bottom: 88px;
+  /* 跟著浮動按鈕一起上移到底部導航列上方（按鈕頂端再加 12px 間距）。
+     transform / transform-origin / 動畫曲線維持原樣不動。 */
+  bottom: calc(
+    var(--bottom-nav-total) + var(--fab-offset) + var(--fab-size) + 12px
+  );
   z-index: 55;
   width: 380px;
-  max-height: min(560px, calc(100dvh - 128px));
+  max-height: min(
+    560px,
+    calc(
+      100dvh - var(--bottom-nav-total) - var(--fab-offset) - var(--fab-size) -
+        52px
+    )
+  );
   padding: 16px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -1243,8 +1392,14 @@ input[type="password"]:focus {
    Responsive — desktop first, this narrows things down for small screens
    ========================================================================== */
 @media (max-width: 640px) {
+  /* 手機版的浮動按鈕小一點、離導航列近一點 */
+  :root {
+    --fab-size: 52px;
+    --fab-offset: 12px;
+  }
+
   .app-shell {
-    padding: 14px 12px 12px;
+    padding: 14px 12px calc(var(--bottom-nav-total) + 8px);
   }
 
   .app-header h1 {
@@ -1255,21 +1410,21 @@ input[type="password"]:focus {
     padding: 16px;
   }
 
-  /* 手機：聊天視窗接近全螢幕，方便閱讀與輸入 */
+  /* 手機：聊天視窗接近全螢幕，方便閱讀與輸入。
+     bottom / max-height 皆改由變數推算，跟著導航列一起上移。 */
   .chat-panel {
     right: 10px;
     left: 10px;
     width: auto;
-    bottom: 82px;
-    max-height: calc(100dvh - 110px);
     padding: 12px;
+    max-height: calc(
+      100dvh - var(--bottom-nav-total) - var(--fab-offset) - var(--fab-size) -
+        34px
+    );
   }
 
   .chat-fab {
     right: 14px;
-    bottom: 14px;
-    width: 52px;
-    height: 52px;
   }
 
   .todo-form {
