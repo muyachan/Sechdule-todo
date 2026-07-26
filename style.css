@@ -1110,20 +1110,21 @@ input[type="password"]:focus {
   padding: 12px 0;
 }
 
-/* 「思考中...」狀態泡泡 */
-.chat-message.chat-pending {
-  color: var(--color-text-muted);
-  font-style: italic;
-  animation: chat-pulse 1.2s ease-in-out infinite;
+/* 新訊息彈入動畫：只套用在最新一則（renderChatMessages 只幫最後一列
+   加這個 class），比聊天視窗開合的彈性動畫更輕更快，避免訊息一多
+   看起來拖沓。 */
+.chat-row-enter {
+  animation: chat-row-pop-in 190ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-@keyframes chat-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
+@keyframes chat-row-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
   }
-  50% {
+  to {
     opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -1133,8 +1134,60 @@ input[type="password"]:focus {
   border-color: var(--color-danger);
 }
 
+/* ==========================================================================
+   輸入中指示器：固定顯示在輸入框正上方的一條窄列，等待 AI 回覆時顯示，
+   回覆抵達（或出錯）後隱藏。樣式參考 Instagram / Messenger 的三點動畫。
+   ========================================================================== */
+.chat-typing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.chat-typing-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.chat-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-completed); /* 未輪到：淺灰 */
+  animation: chat-typing-bounce 1.2s ease-in-out infinite;
+}
+
+.chat-typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+.chat-typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.chat-typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* 依序由左到右變深＋向上小幅跳動，形成波浪滾動感，週期 1.2 秒一輪。 */
+@keyframes chat-typing-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    background: var(--color-completed);
+  }
+  40% {
+    transform: translateY(-4px);
+    background: var(--color-text); /* 輪到：接近黑 */
+  }
+}
+
 /* 送出中停用狀態 */
-.chat-form input:disabled,
+.chat-form textarea:disabled,
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -1144,10 +1197,35 @@ input[type="password"]:focus {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+  /* 輸入框變多行增高時，送出鈕貼齊底部，不要被拉成跟輸入框一樣高。 */
+  align-items: flex-end;
 }
 
-.chat-form input[type="text"] {
+/* 聊天輸入框：多行、自動增高（JS 控制 height），CSS 只負責上限與外觀。
+   獨立於通用的 input[type="text"] 樣式之外，因為 textarea 不會被那組
+   選擇器選到。 */
+#chat-input {
   flex: 1;
+  font-family: inherit;
+  /* 至少 16px，避免 iOS Safari 聚焦時自動放大畫面。 */
+  font-size: 16px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  outline: none;
+  resize: none; /* 不給手動拖曳，改用自動增高 */
+  min-height: 40px; /* 約 1 行 + padding */
+  max-height: 130px; /* 約 5 行，超過改內部捲動 */
+  overflow-y: auto;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#chat-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 /* ==========================================================================
