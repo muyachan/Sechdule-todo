@@ -41,7 +41,6 @@ const authMessageEl = document.getElementById("auth-message");
 const appMainEl = document.getElementById("app-main");
 const userBarEl = document.getElementById("user-bar");
 const userEmailEl = document.getElementById("user-email");
-const logoutBtn = document.getElementById("logout-btn");
 
 const todoListEl = document.getElementById("todo-list");
 const todoEmptyEl = document.getElementById("todo-empty");
@@ -63,6 +62,16 @@ const drawerEl = document.getElementById("todo-drawer");
 const drawerToggleEl = document.getElementById("drawer-toggle");
 const drawerCloseEl = document.getElementById("drawer-close");
 const drawerBackdropEl = document.getElementById("drawer-backdrop");
+
+const calendarViewEl = document.getElementById("calendar-view");
+const todosViewEl = document.getElementById("todos-view");
+const bottomNavEl = document.getElementById("bottom-nav");
+const navCalendarEl = document.getElementById("nav-calendar");
+const navNotesEl = document.getElementById("nav-notes");
+const navTodosEl = document.getElementById("nav-todos");
+const navDarkEl = document.getElementById("nav-dark");
+const navLogoutEl = document.getElementById("nav-logout");
+const toastEl = document.getElementById("toast");
 
 const calGridEl = document.getElementById("cal-grid");
 const calTitleEl = document.getElementById("cal-title");
@@ -566,12 +575,16 @@ async function deleteTodo(id) {
  * 由它扇出去更新三個會顯示待辦的畫面，確保彼此同步。
  */
 function renderTodos() {
-  renderTodoList(); // 抽屜裡的完整列表
+  renderTodoList(); // #todos-view 全螢幕檢視裡的完整列表
   renderCalendar(); // 月曆上的小圓點
   renderDaySection(); // 月曆下方選中日期的清單
 }
 
-/** 抽屜裡的完整待辦列表（原本的 renderTodos，內容不變）。 */
+/**
+ * 完整待辦列表。原本渲染在抽屜裡，列表移到 #todos-view 後，
+ * 因為容器 ID（#todo-list / #todo-empty / #todo-loading）沿用未變，
+ * 這個函式不需要改動就自動指向新的容器，維持單一重繪入口。
+ */
 function renderTodoList() {
   const sorted = sortTodos(todos);
   todoListEl.innerHTML = "";
@@ -1131,6 +1144,89 @@ drawerCloseEl.addEventListener("click", closeDrawer);
 drawerBackdropEl.addEventListener("click", closeDrawer);
 
 /* ==========================================================================
+ * 全部待辦：全螢幕檢視（與月曆互斥）
+ * --------------------------------------------------------------------------
+ * 沿用專案既有的 .is-open class 慣例，不引入分頁結構、路由或 hash。
+ * 開啟時月曆隱藏、關閉時月曆復原，兩者互斥。
+ * ========================================================================== */
+
+function isTodosOpen() {
+  return todosViewEl.classList.contains("is-open");
+}
+
+function openTodosView() {
+  todosViewEl.classList.add("is-open");
+  calendarViewEl.hidden = true; // 與月曆互斥
+  setActiveNav("todos");
+  closeDrawer(); // 切換畫面時順手收起抽屜，避免蓋住新畫面
+}
+
+function closeTodosView() {
+  todosViewEl.classList.remove("is-open");
+  calendarViewEl.hidden = false;
+  setActiveNav("calendar");
+}
+
+/* ==========================================================================
+ * 底部導航列
+ * --------------------------------------------------------------------------
+ * 前三格切換畫面（有選取狀態），後兩格是動作（無選取狀態）。
+ * 備忘錄與夜間模式此階段只是佔位，點擊顯示「開發中」提示。
+ * ========================================================================== */
+
+/** 設定前三格的選取狀態（後兩格是動作，不參與）。 */
+function setActiveNav(navId) {
+  bottomNavEl.querySelectorAll("[data-nav]").forEach((btn) => {
+    const isActive = btn.dataset.nav === navId;
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-current", isActive ? "page" : "false");
+  });
+}
+
+let toastTimer = null;
+
+/** 簡易提示條（給尚未實作的佔位功能用）。 */
+function showToast(text) {
+  toastEl.textContent = text;
+  toastEl.hidden = false;
+  // 先移除再強制 reflow，讓連續點擊時動畫能重新播放。
+  toastEl.classList.remove("is-visible");
+  void toastEl.offsetWidth;
+  toastEl.classList.add("is-visible");
+
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.classList.remove("is-visible");
+    setTimeout(() => {
+      toastEl.hidden = true;
+    }, 200);
+  }, 1600);
+}
+
+navCalendarEl.addEventListener("click", () => {
+  closeTodosView();
+  closeDrawer();
+});
+
+navTodosEl.addEventListener("click", () => {
+  openTodosView();
+});
+
+navNotesEl.addEventListener("click", () => {
+  showToast("備忘錄開發中");
+});
+
+navDarkEl.addEventListener("click", () => {
+  showToast("夜間模式開發中");
+});
+
+// 登出：沿用原本 logoutBtn 的行為（原本在標頭的按鈕已移除）。
+navLogoutEl.addEventListener("click", async () => {
+  await supabaseClient.auth.signOut();
+  // 由 onAuthStateChange 接手切換畫面。
+});
+
+/* ==========================================================================
  * 浮動 AI 助理視窗的開關（全域元件）
  * --------------------------------------------------------------------------
  * 右下角圓形浮動按鈕：點擊展開／收起聊天視窗，展開時按鈕變成 ✕。
@@ -1216,7 +1312,7 @@ function renderAuthState(user) {
     renderChatMessages();
     fetchTodos();
   } else {
-    // 登出後清掉畫面上的資料，避免殘留，並收起所有浮層。
+    // 登出後清掉畫面上的資料，避免殘留，並收起所有浮層／回到月曆。
     todos = [];
     todoListEl.innerHTML = "";
     todoEmptyEl.hidden = true;
@@ -1224,6 +1320,7 @@ function renderAuthState(user) {
     dayListEl.innerHTML = "";
     closeChatPanel();
     closeDrawer();
+    closeTodosView(); // 關閉全部待辦畫面，下次登入回到月曆
     toggleCalJump(false);
   }
 
@@ -1287,11 +1384,7 @@ signupBtn.addEventListener("click", async () => {
   }
 });
 
-// 登出
-logoutBtn.addEventListener("click", async () => {
-  await supabaseClient.auth.signOut();
-  // 由 onAuthStateChange 接手切換畫面。
-});
+// 登出的按鈕已移到底部導航列（見上方 navLogoutEl 的處理）。
 
 /* ==========================================================================
  * 啟動畫面 (Splash)
