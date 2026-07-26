@@ -829,16 +829,24 @@ input[type="password"]:focus {
   font-size: 20px;
 }
 
-/* 聊天視窗：用 visibility + opacity + transform 做展開／收起過渡
-   （不用 display:none，否則無法產生動畫）。 */
+/* 聊天視窗：從浮動按鈕位置「彈出」展開、往按鈕「吸入」收起。
+   不用 display:none（否則無法做動畫），改用 visibility + opacity +
+   transform 過渡。展開與收起用不同的 transition 曲線：CSS 在切換
+   class 時，會採用「切換後」那個狀態自己定義的 transition，所以
+   .chat-panel（收起／收起動畫）跟 .chat-panel.is-open（展開／展開
+   動畫）分別定義，就能做出不對稱的彈性效果，不需要額外寫 JS。
+   transform-origin 固定在 bottom right，本來就貼近浮動按鈕的位置，
+   不需要額外位移。 */
 .chat-panel {
   display: flex;
   flex-direction: column;
   opacity: 0;
   visibility: hidden;
-  transform: scale(0.94) translateY(12px);
+  /* 收起時：縮小＋微旋轉，像是被吸回按鈕裡 */
+  transform: scale(0.15) rotate(-8deg);
   transform-origin: bottom right;
-  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0.22s ease;
+  transition: transform 0.26s cubic-bezier(0.55, 0, 0.85, 0.35),
+    opacity 0.18s ease, visibility 0.26s;
   position: fixed;
   right: 20px;
   bottom: 88px;
@@ -855,7 +863,10 @@ input[type="password"]:focus {
 .chat-panel.is-open {
   opacity: 1;
   visibility: visible;
-  transform: scale(1) translateY(0);
+  transform: scale(1) rotate(0deg);
+  /* 展開時：彈性曲線輕微過衝再回彈到定位 */
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.2s ease, visibility 0s;
 }
 
 /* 聊天視窗內：標頭固定、訊息區佔滿並捲動、輸入框固定在底部。 */
