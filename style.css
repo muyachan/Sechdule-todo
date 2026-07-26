@@ -1,36 +1,44 @@
 /* ==========================================================================
-   Design tokens — deep blue-green primary on a soft cream backdrop,
-   warm neutral grays, gentle rounded corners, light shadow layering.
+   Design tokens — neutral grayscale palette (near-white / near-black),
+   near-invisible borders, one low-key dark accent for buttons/emphasis.
    ========================================================================== */
 :root {
-  /* 頁面背景（明顯的暖米白／象牙色）與卡片表面（純白，與頁面背景拉出層次） */
-  --color-bg: #efe6d3;
+  /* 頁面背景（極淺灰白）與卡片表面（純白，與頁面背景拉出些微層次） */
+  --color-bg: #fafafa;
   --color-surface: #ffffff;
-  --color-bg-subtle: #f7f2e7;
+  --color-bg-subtle: #f2f2f2;
 
-  --color-border: #d8cfb8;
-  --color-text: #2b2a26;
-  --color-text-muted: #726f66;
+  --color-border: #eeeeee;
+  --color-text: #1a1a1a;
+  --color-text-muted: #6b6b6b;
 
-  /* 主色：深藍綠 */
-  --color-accent: #2c6e63;
-  --color-accent-hover: #235850;
-  --color-accent-active: #1c4a43;
-  --color-accent-soft: #e3eeec;
-  --color-accent-soft-border: #c6dbd7;
+  /* 主色：低調深灰（按鈕／強調用，刻意不用鮮豔色） */
+  --color-accent: #2d2d2d;
+  --color-accent-hover: #1a1a1a;
+  --color-accent-active: #000000;
+  --color-accent-soft: #f0f0f0;
+  --color-accent-soft-border: #e0e0e0;
 
-  /* 語意色（柔化過，不用死板的死板紅） */
+  /* 「今天」標記：比一般按鈕更深，做為視覺錨點 */
+  --color-today: #1a1a1a;
+  /* 月曆上「有待辦事項」的小圓點：未完成中灰／已完成淺灰 */
+  --color-dot-open: #8a8a8a;
+
+  /* 上／下個月延伸日期的淡出色 */
+  --color-outside-month: #bdbdbd;
+
+  /* 語意色（維持警示辨識度，不隨版面改成灰階：過期/刪除仍需要明顯區分） */
   --color-danger: #c1483d;
   --color-danger-hover: #a83c32;
   --color-overdue: #d97757;
-  --color-completed: #a39c8e;
+  --color-completed: #c4c4c4;
 
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 12px;
 
-  --shadow-card: 0 2px 4px rgba(43, 42, 38, 0.1), 0 14px 32px rgba(44, 110, 99, 0.16);
-  --shadow-sm: 0 2px 6px rgba(43, 42, 38, 0.12), 0 6px 14px rgba(43, 42, 38, 0.08);
+  --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.06), 0 14px 32px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.08), 0 6px 14px rgba(0, 0, 0, 0.05);
 
   --font-sans: "Inter", "Noto Sans TC", -apple-system, BlinkMacSystemFont,
     "Segoe UI", "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei",
@@ -298,12 +306,12 @@ body {
 
 /* 上／下個月延伸出來的日期：淺灰，維持格線完整但明顯區分 */
 .cal-cell.is-outside .cal-day-num {
-  color: #bdb6a4;
+  color: var(--color-outside-month);
 }
 
-/* 今天：主色實心圓 */
+/* 今天：深色實心圓 */
 .cal-cell.is-today .cal-day-num {
-  background: var(--color-accent);
+  background: var(--color-today);
   color: #fff;
   font-weight: 600;
 }
@@ -314,7 +322,7 @@ body {
 }
 
 .cal-cell.is-selected.is-today .cal-day-num {
-  background: var(--color-accent);
+  background: var(--color-today);
 }
 
 .cal-cell.is-selected {
@@ -333,7 +341,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-dot-open);
 }
 
 .cal-dot.is-done {
@@ -433,7 +441,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 70;
-  background: rgba(43, 42, 38, 0.35);
+  background: rgba(0, 0, 0, 0.35);
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.25s ease, visibility 0.25s ease;
@@ -455,7 +463,7 @@ body {
   overflow-y: auto;
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
-  box-shadow: -8px 0 24px rgba(43, 42, 38, 0.16);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
   transform: translateX(100%);
   visibility: hidden;
   transition: transform 0.28s ease, visibility 0.28s ease;
@@ -619,7 +627,7 @@ input[type="password"]:focus {
 
 .btn-primary:hover {
   background: var(--color-accent-hover);
-  box-shadow: 0 2px 6px rgba(44, 110, 99, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 }
 
 .btn-primary:active {
@@ -792,7 +800,7 @@ input[type="password"]:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(43, 42, 38, 0.24);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   transition: background-color 0.15s ease, transform 0.1s ease;
   /* 載入完成時輕微縮放 + 淡入出現 */
   animation: fab-pop-in 0.32s ease-out both;
