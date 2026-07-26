@@ -41,6 +41,14 @@
   box-sizing: border-box;
 }
 
+/* ⚠️ 防呆：瀏覽器預設的 [hidden]{display:none} 是「使用者代理樣式」，
+   任何作者樣式（例如 .user-bar{display:flex}）都會蓋過它，導致加了 hidden
+   屬性卻仍然顯示。這條規則確保 hidden 永遠有效，避免每加一個 display 規則
+   就要再補一條 [hidden] 例外。 */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -114,20 +122,360 @@ body {
   flex-direction: column;
 }
 
-/* 未登入時 <main hidden> 要真的隱藏。
-   注意：作者樣式表的 display:flex 會蓋過瀏覽器預設的 [hidden]{display:none}，
-   少了這條規則，登入畫面下方就會漏出整個 App 介面。 */
-.app-main[hidden] {
-  display: none;
+
+/* ==========================================================================
+   啟動畫面 (Splash)
+   ========================================================================== */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--color-bg);
+  transition: opacity 0.35s ease;
+}
+
+.splash.is-hiding {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+}
+
+.splash-name {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-accent);
 }
 
 /* ==========================================================================
-   待辦事項主檢視：填滿剩餘高度，內容過長時於面板內捲動（不撐長整頁）。
+   月曆主檢視
+   --------------------------------------------------------------------------
+   走 iOS 行事曆的簡潔路線：幾乎不畫格線，用留白分隔日期；數字大而清楚。
    ========================================================================== */
-.todo-view {
+.calendar-view {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+}
+
+/* 月份導覽列 */
+.cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cal-title {
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.cal-title:hover {
+  background: var(--color-bg-subtle);
+}
+
+/* 通用小圖示按鈕（月份箭頭、抽屜開關等） */
+.icon-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+
+/* 快速跳轉年月 */
+.cal-jump {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+
+.cal-jump select {
+  font-family: inherit;
+  /* 16px：避免 iOS Safari 聚焦時自動放大畫面 */
+  font-size: 16px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* 星期標題列 */
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-top: 12px;
+  flex-shrink: 0;
+}
+
+.cal-weekdays span {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding-bottom: 6px;
+}
+
+/* 日期格子：不畫格線，靠留白分隔 */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cal-cell {
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 6px 0 0;
+  border-radius: var(--radius-sm);
+}
+
+.cal-cell:hover {
+  background: var(--color-bg-subtle);
+}
+
+/* 日期數字：大而清楚 */
+.cal-day-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--color-text);
+}
+
+/* 上／下個月延伸出來的日期：淺灰，維持格線完整但明顯區分 */
+.cal-cell.is-outside .cal-day-num {
+  color: #bdb6a4;
+}
+
+/* 今天：主色實心圓 */
+.cal-cell.is-today .cal-day-num {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 選中日期：淡色圓底（今天被選中時仍以實心圓為主） */
+.cal-cell.is-selected .cal-day-num {
+  background: var(--color-accent-soft);
+}
+
+.cal-cell.is-selected.is-today .cal-day-num {
+  background: var(--color-accent);
+}
+
+.cal-cell.is-selected {
+  background: var(--color-bg-subtle);
+}
+
+/* 待辦標記小圓點 */
+.cal-dots {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+  align-items: center;
+}
+
+.cal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.cal-dot.is-done {
+  background: var(--color-completed);
+}
+
+/* ==========================================================================
+   月曆下方：選中日期的待辦清單
+   ========================================================================== */
+.day-section {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.day-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 一行一項、細分隔線、右側刪除按鈕 */
+.day-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.day-check {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.day-item-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.day-item.is-completed .day-item-title {
+  text-decoration: line-through;
+  color: var(--color-completed);
+}
+
+.day-delete {
+  appearance: none;
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.day-delete:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-danger);
+}
+
+.day-empty {
+  margin: 12px 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.day-add-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.day-add-form input {
+  flex: 1;
+}
+
+/* ==========================================================================
+   待辦事項列表抽屜（右側滑出）
+   ========================================================================== */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(43, 42, 38, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.drawer-backdrop.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.todo-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  width: min(420px, 88vw);
+  padding: 20px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -8px 0 24px rgba(43, 42, 38, 0.16);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.28s ease, visibility 0.28s ease;
+}
+
+.todo-drawer.is-open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.drawer-head .panel-title {
+  margin: 0;
 }
 
 /* ==========================================================================
@@ -226,7 +574,10 @@ input[type="date"],
 input[type="email"],
 input[type="password"] {
   font-family: inherit;
-  font-size: 14px;
+  /* ⚠️ 至少 16px：小於 16px 會觸發 iOS Safari 聚焦輸入框時自動放大畫面，
+     導致上方內容（例如聊天記錄）被推出視野。這是正解，不要改用
+     maximum-scale 去鎖縮放，那會影響需要放大的使用者。 */
+  font-size: 16px;
   padding: 8px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -443,6 +794,19 @@ input[type="password"]:focus {
   justify-content: center;
   box-shadow: 0 4px 12px rgba(43, 42, 38, 0.24);
   transition: background-color 0.15s ease, transform 0.1s ease;
+  /* 載入完成時輕微縮放 + 淡入出現 */
+  animation: fab-pop-in 0.32s ease-out both;
+}
+
+@keyframes fab-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .chat-fab:hover {
@@ -457,17 +821,16 @@ input[type="password"]:focus {
   font-size: 20px;
 }
 
-/* 聊天視窗：預設隱藏（hidden 屬性），展開時往上長成一張卡片。 */
+/* 聊天視窗：用 visibility + opacity + transform 做展開／收起過渡
+   （不用 display:none，否則無法產生動畫）。 */
 .chat-panel {
-  display: none;
-}
-
-.chat-panel:not([hidden]) {
   display: flex;
   flex-direction: column;
-}
-
-.chat-panel {
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.94) translateY(12px);
+  transform-origin: bottom right;
+  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0.22s ease;
   position: fixed;
   right: 20px;
   bottom: 88px;
@@ -479,6 +842,12 @@ input[type="password"]:focus {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
+}
+
+.chat-panel.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1) translateY(0);
 }
 
 /* 聊天視窗內：標頭固定、訊息區佔滿並捲動、輸入框固定在底部。 */
@@ -811,8 +1180,22 @@ input[type="password"]:focus {
     align-items: stretch;
   }
 
+  /* ⚠️ 直排時 flex-basis 會從「寬度」變成「高度」，若沿用 flex:1 1 220px，
+     欄位會被撐成 220px 高。這裡要重設回自動高度。 */
+  .field,
   .field-date {
-    flex-basis: auto;
+    flex: 0 0 auto;
+  }
+
+  /* 手機標頭空間有限：隱藏 email，只留 ☰ 與登出 */
+  .user-email {
+    display: none;
+  }
+
+  /* 讓頁尾文字不被右下角浮動按鈕蓋住 */
+  .app-footer {
+    padding-right: 72px;
+    text-align: left;
   }
 
   .todo-item {

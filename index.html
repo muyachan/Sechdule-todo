@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>" />
 
 <!-- ============ PWA 設定：manifest + meta 標籤 + 圖示 ============ -->
-<link rel="manifest" href="manifest.json?v=15" />
+<link rel="manifest" href="manifest.json?v=16" />
 <meta name="theme-color" content="#2C6E63" />
 <!-- iOS Safari 不吃 manifest.json 的 display/name，需要另外用這些 meta 標籤設定
      「加入主畫面」後的全螢幕模式與名稱。 -->
@@ -28,19 +28,36 @@
         請把下方所有的 v=? 一起 +1，使用者的瀏覽器才會抓到最新版，
         而不是舊的快取檔。（sw.js 本身不用加版本參數，它的快取版本
         由 sw.js 檔案內的 CACHE_NAME 常數控制，見該檔案開頭註解。）-->
-<link rel="stylesheet" href="style.css?v=15" />
+<link rel="stylesheet" href="style.css?v=16" />
 </head>
 <body>
+  <!-- ============ 啟動畫面（Splash）============
+       預設就是可見狀態（不靠 JS 才顯示），這樣從主畫面開啟 PWA 時
+       第一個 frame 就有畫面，不會先閃一下空白。資料/登入狀態就緒後
+       由 script.js 淡出移除。 -->
+  <div id="splash" class="splash">
+    <img class="splash-icon" src="icons/icon-192.png" alt="" width="96" height="96" />
+    <p class="splash-name">我的行事曆</p>
+  </div>
+
   <div class="app-shell">
     <header class="app-header">
       <div class="app-header-row">
         <div>
-          <h1>📋 我的待辦事項</h1>
-          <p class="app-subtitle">個人行事曆／待辦事項管理工具</p>
+          <h1>我的行事曆</h1>
         </div>
-        <!-- 登入後才顯示的使用者資訊 + 登出 -->
+        <!-- 登入後才顯示的使用者資訊 + 列表抽屜 + 登出 -->
         <div id="user-bar" class="user-bar" hidden>
           <span id="user-email" class="user-email"></span>
+          <button
+            type="button"
+            id="drawer-toggle"
+            class="icon-btn"
+            aria-expanded="false"
+            aria-controls="todo-drawer"
+            aria-label="開啟待辦事項列表"
+            title="待辦事項列表"
+          >☰</button>
           <button type="button" id="logout-btn" class="btn btn-secondary btn-sm">登出</button>
         </div>
       </div>
@@ -71,9 +88,68 @@
 
     <!-- ============ 主應用程式（登入後才顯示）============ -->
     <main id="app-main" class="app-main" hidden>
-      <!-- 待辦事項主檢視：功能維持不變 -->
-      <section id="todo-view" class="todo-view panel" aria-labelledby="todo-heading">
-        <h2 id="todo-heading" class="panel-title">待辦事項</h2>
+      <!-- ============ 月曆主檢視 ============ -->
+      <section id="calendar-view" class="calendar-view" aria-label="月曆">
+        <div class="cal-nav">
+          <button type="button" id="cal-prev" class="icon-btn" aria-label="上一個月">‹</button>
+          <button
+            type="button"
+            id="cal-title"
+            class="cal-title"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="cal-jump"
+          ></button>
+          <button type="button" id="cal-next" class="icon-btn" aria-label="下一個月">›</button>
+        </div>
+
+        <!-- 快速跳轉：年 + 月下拉選單 -->
+        <div id="cal-jump" class="cal-jump" hidden>
+          <select id="cal-jump-year" aria-label="年份"></select>
+          <select id="cal-jump-month" aria-label="月份"></select>
+          <button type="button" id="cal-jump-today" class="btn btn-secondary btn-sm">今天</button>
+        </div>
+
+        <div class="cal-weekdays" aria-hidden="true">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+
+        <div id="cal-grid" class="cal-grid" role="grid" aria-label="日期"></div>
+
+        <!-- 選中日期的待辦清單（常駐於月曆下方） -->
+        <div class="day-section">
+          <h2 id="day-title" class="day-title"></h2>
+          <ul id="day-list" class="day-list"></ul>
+          <p id="day-empty" class="day-empty" hidden>這天沒有待辦事項</p>
+
+          <form id="day-add-form" class="day-add-form">
+            <input
+              type="text"
+              id="day-add-title"
+              placeholder="新增此日待辦..."
+              required
+              maxlength="200"
+              autocomplete="off"
+            />
+            <button type="submit" class="btn btn-primary btn-sm">新增</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============ 待辦事項列表抽屜（全域元件）============
+           內容與改版前的列表檢視完全相同（含 ID），因此新增/編輯/刪除/
+           打勾的既有邏輯不需修改就能沿用。 -->
+      <div id="drawer-backdrop" class="drawer-backdrop"></div>
+      <aside
+        id="todo-drawer"
+        class="todo-drawer"
+        role="dialog"
+        aria-label="待辦事項列表"
+      >
+        <div class="drawer-head">
+          <h2 class="panel-title">全部待辦事項</h2>
+          <button type="button" id="drawer-close" class="icon-btn" aria-label="關閉列表">✕</button>
+        </div>
 
         <form id="todo-form" class="todo-form">
           <div class="field">
@@ -97,7 +173,7 @@
         <p id="todo-loading" class="empty-state" hidden>載入中...</p>
         <ul id="todo-list" class="todo-list"></ul>
         <p id="todo-empty" class="empty-state" hidden>目前沒有待辦事項，新增一筆開始吧！</p>
-      </section>
+      </aside>
 
       <!-- ============ AI 助理：右下角浮動聊天泡泡（全域元件）============
            聊天視窗內容與 ID 都與改版前完全相同，因此所有既有聊天邏輯
@@ -117,7 +193,6 @@
         class="chat-panel"
         role="dialog"
         aria-label="AI 行程規劃助理"
-        hidden
       >
         <div class="chat-panel-head">
           <h2 class="panel-title">AI 行程規劃助理</h2>
@@ -154,8 +229,8 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
-  <script src="config.js?v=15"></script>
-  <script src="script.js?v=15"></script>
+  <script src="config.js?v=16"></script>
+  <script src="script.js?v=16"></script>
 
   <!-- 註冊 Service Worker（見 sw.js）：提供基本的 App Shell 快取，
        讓 PWA 開啟更快、離線時至少能顯示介面外殼。與待辦/聊天等
