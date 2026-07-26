@@ -1129,7 +1129,8 @@ function openChatPanel() {
   chatFabEl.setAttribute("aria-label", "關閉 AI 助理");
   // 展開時捲到最新訊息（原本是切換到聊天分頁時做這件事）。
   scrollChatToBottom();
-  if (!chatInputEl.disabled) chatInputEl.focus();
+  // 刻意不自動 focus 輸入框：手機上會立刻喚起鍵盤、畫面上推，
+  // 蓋住剛展開的彈出動畫與聊天記錄。改由使用者自己點擊輸入框喚起鍵盤。
 }
 
 function closeChatPanel() {

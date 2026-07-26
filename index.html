@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>" />
 
 <!-- ============ PWA 設定：manifest + meta 標籤 + 圖示 ============ -->
-<link rel="manifest" href="manifest.json?v=18" />
+<link rel="manifest" href="manifest.json?v=19" />
 <meta name="theme-color" content="#2D2D2D" />
 <!-- iOS Safari 不吃 manifest.json 的 display/name，需要另外用這些 meta 標籤設定
      「加入主畫面」後的全螢幕模式與名稱。 -->
@@ -28,7 +28,7 @@
         請把下方所有的 v=? 一起 +1，使用者的瀏覽器才會抓到最新版，
         而不是舊的快取檔。（sw.js 本身不用加版本參數，它的快取版本
         由 sw.js 檔案內的 CACHE_NAME 常數控制，見該檔案開頭註解。）-->
-<link rel="stylesheet" href="style.css?v=18" />
+<link rel="stylesheet" href="style.css?v=19" />
 </head>
 <body>
   <!-- ============ 啟動畫面（Splash）============
@@ -229,8 +229,8 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
-  <script src="config.js?v=18"></script>
-  <script src="script.js?v=18"></script>
+  <script src="config.js?v=19"></script>
+  <script src="script.js?v=19"></script>
 
   <!-- 註冊 Service Worker（見 sw.js）：提供基本的 App Shell 快取，
        讓 PWA 開啟更快、離線時至少能顯示介面外殼。與待辦/聊天等
