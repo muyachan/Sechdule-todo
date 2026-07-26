@@ -55,6 +55,7 @@ const chatFormEl = document.getElementById("chat-form");
 const chatInputEl = document.getElementById("chat-input");
 const chatFabEl = document.getElementById("chat-fab");
 const chatPanelEl = document.getElementById("chat-panel");
+const chatTypingEl = document.getElementById("chat-typing");
 
 const splashEl = document.getElementById("splash");
 
@@ -742,9 +743,8 @@ const CHAT_HISTORY_LIMIT = 20;
 // 送出中旗標：避免使用者重複送出（含按 Enter 重送）。
 let isChatBusy = false;
 
-// 送出按鈕與「思考中...」暫時泡泡的參照。
+// 送出按鈕的參照。
 const chatSubmitBtn = chatFormEl.querySelector('button[type="submit"]');
-let chatPendingBubble = null;
 
 /** @type {Array<{id:string, role:'user'|'ai', content:string, createdAt:string}>} */
 let chatMessages = loadChatFromStorage();
@@ -862,8 +862,13 @@ function renderChatMessages() {
     return;
   }
 
-  chatMessages.forEach((msg) => {
-    chatMessagesEl.appendChild(buildChatRow(msg));
+  chatMessages.forEach((msg, index) => {
+    const row = buildChatRow(msg);
+    // 只讓最新一則做彈入動畫，避免每次送出新訊息時整段歷史都重新彈一次。
+    if (index === chatMessages.length - 1) {
+      row.classList.add("chat-row-enter");
+    }
+    chatMessagesEl.appendChild(row);
   });
 
   scrollChatToBottom();
@@ -928,10 +933,10 @@ function toApiMessages(list) {
   }));
 }
 
-/** 建立一個帶 AI 頭像的暫時 row（給思考中 / 錯誤泡泡共用）。 */
+/** 建立一個帶 AI 頭像的暫時 row（目前僅供錯誤泡泡使用）。 */
 function buildTransientAiRow(bubbleClass, textContent) {
   const row = document.createElement("div");
-  row.className = "chat-row ai";
+  row.className = "chat-row ai chat-row-enter";
   row.appendChild(buildAvatar());
   const bubble = document.createElement("div");
   bubble.className = `chat-message ai ${bubbleClass}`;
@@ -940,18 +945,19 @@ function buildTransientAiRow(bubbleClass, textContent) {
   return row;
 }
 
-/** 顯示 / 移除「思考中...」暫時泡泡（不納入 chatMessages，不會被存到 localStorage）。 */
+/**
+ * 顯示／隱藏輸入中指示器（固定在輸入框正上方的三顆點動畫列，
+ * 見 index.html #chat-typing 與 style.css .chat-typing 系列樣式）。
+ * 不再於對話區插入「思考中」泡泡。
+ */
 function showChatThinking() {
-  chatPendingBubble = buildTransientAiRow("chat-pending", "思考中...");
-  chatMessagesEl.appendChild(chatPendingBubble);
+  chatTypingEl.hidden = false;
+  // 指示器會佔用聊天視窗內的一點高度，重新捲到底避免蓋住最後一則訊息。
   scrollChatToBottom();
 }
 
 function hideChatThinking() {
-  if (chatPendingBubble && chatPendingBubble.parentNode) {
-    chatPendingBubble.parentNode.removeChild(chatPendingBubble);
-  }
-  chatPendingBubble = null;
+  chatTypingEl.hidden = true;
 }
 
 /** 顯示一則暫時的錯誤泡泡（不存進歷史，下次送出時會被重繪清掉）。 */
@@ -1009,26 +1015,41 @@ async function callChatFunction(messages, todosContext, accessToken) {
 }
 
 /**
- * 明確處理 Enter 送出，避免依賴瀏覽器對「input 內按 Enter 送出表單」的
- * 預設行為在不同瀏覽器 / 輸入法下不一致（這也是中文輸入法選字時
- * 常見「按兩次 Enter 才送出」的成因：第一次 Enter 其實是在確認選字）。
- *   - 按 Enter 時若正在輸入法選字中（isComposing），不送出，交給輸入法處理。
- *   - 按 Enter 且未在選字中 → 立即送出（一次就好）。
- *   - Shift+Enter → 不送出（目前是單行 input，本來就無法換行，這裡明確
- *     擋下即可，避免萬一被瀏覽器解讀成送出）。
+ * 輸入框現在是多行 textarea：Enter 一律換行，不送出訊息，
+ * 訊息只能靠按「送出」鈕發出。
+ *
+ * 這裡仍保留中文輸入法選字（composition）的判斷邏輯，不因為 Enter
+ * 不再送出就一併刪除：composing 中的 Enter（isComposing / 舊瀏覽器
+ * 用 keyCode === 229 判斷）一律交給輸入法處理、不做任何攔截；非
+ * composing 的 Enter 也不攔截，直接讓瀏覽器對 textarea 的原生行為
+ * （換行）發生。textarea 原生就不會因為 Enter 觸發表單送出，所以
+ * 兩種情況都不需要 preventDefault。
  */
 chatInputEl.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   if (e.isComposing || e.keyCode === 229) return; // 輸入法選字中，交給輸入法處理
-
-  // 單行 input 本來就不能換行，但按 Enter（含 Shift+Enter）在單一文字
-  // 欄位的表單中，瀏覽器預設行為就是送出表單，所以 Shift+Enter 這裡也要
-  // 明確擋下，才不會被瀏覽器的預設行為送出。
-  e.preventDefault();
-  if (e.shiftKey) return; // 保留給換行，不送出
-
-  chatFormEl.requestSubmit();
+  // 非選字中的 Enter：不攔截，讓 textarea 正常換行。
 });
+
+/**
+ * 依內容高度自動增高，超過 CSS max-height（約 5 行）後改由內部捲動。
+ *
+ * 內容清空時（例如送出後、或使用者手動刪到空白）直接清掉行內高度，
+ * 交回 CSS min-height 決定高度，不要用 scrollHeight 去量——因為欄位
+ * 空白時瀏覽器顯示的是 placeholder 文字，這裡的 placeholder 較長，
+ * 在目前欄寬下會換成兩行，若照樣用 scrollHeight 量測，量到的其實是
+ * 「placeholder 換行後」的高度，會讓清空後的欄位錯誤地維持在多行高度。
+ */
+function resizeChatInput() {
+  if (!chatInputEl.value) {
+    chatInputEl.style.height = "";
+    return;
+  }
+  chatInputEl.style.height = "auto";
+  chatInputEl.style.height = `${chatInputEl.scrollHeight}px`;
+}
+
+chatInputEl.addEventListener("input", resizeChatInput);
 
 chatFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1039,6 +1060,7 @@ chatFormEl.addEventListener("submit", async (e) => {
 
   addChatMessage("user", message);
   chatFormEl.reset();
+  resizeChatInput(); // reset() 不會清掉 JS 設定的 inline height，要手動收回單行高度
 
   setChatBusy(true);
   showChatThinking();
