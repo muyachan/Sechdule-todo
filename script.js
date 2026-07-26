@@ -56,6 +56,28 @@ const chatInputEl = document.getElementById("chat-input");
 const chatFabEl = document.getElementById("chat-fab");
 const chatPanelEl = document.getElementById("chat-panel");
 
+const splashEl = document.getElementById("splash");
+
+const drawerEl = document.getElementById("todo-drawer");
+const drawerToggleEl = document.getElementById("drawer-toggle");
+const drawerCloseEl = document.getElementById("drawer-close");
+const drawerBackdropEl = document.getElementById("drawer-backdrop");
+
+const calGridEl = document.getElementById("cal-grid");
+const calTitleEl = document.getElementById("cal-title");
+const calPrevEl = document.getElementById("cal-prev");
+const calNextEl = document.getElementById("cal-next");
+const calJumpEl = document.getElementById("cal-jump");
+const calJumpYearEl = document.getElementById("cal-jump-year");
+const calJumpMonthEl = document.getElementById("cal-jump-month");
+const calJumpTodayEl = document.getElementById("cal-jump-today");
+
+const dayTitleEl = document.getElementById("day-title");
+const dayListEl = document.getElementById("day-list");
+const dayEmptyEl = document.getElementById("day-empty");
+const dayAddFormEl = document.getElementById("day-add-form");
+const dayAddTitleEl = document.getElementById("day-add-title");
+
 /* ==========================================================================
  * 狀態 (State)
  * ========================================================================== */
@@ -218,6 +240,237 @@ function sortTodos(list) {
 }
 
 /* ==========================================================================
+ * 月曆 (Calendar)
+ * --------------------------------------------------------------------------
+ * 重要：日期一律用 "YYYY-MM-DD" 字串處理與比對，不經過 new Date(dueDate)。
+ * 因為 new Date("2026-08-01") 會被解讀成 UTC 午夜，在部分時區換算回本地
+ * 日期時會位移一天，月曆就會把待辦標到錯誤的格子。
+ * ========================================================================== */
+
+const WEEKDAY_COUNT = 7;
+const CAL_ROWS = 6; // 固定 6 列，換月時版面高度不跳動
+
+/** Date 物件 → "YYYY-MM-DD"（以本地時間為準）。 */
+function toDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function todayKey() {
+  return toDateKey(new Date());
+}
+
+/** "YYYY-MM-DD" → 顯示用的「M月D日（週X）」。 */
+function formatDayTitle(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const weekday = "日一二三四五六"[new Date(y, m - 1, d).getDay()];
+  return `${m}月${d}日（週${weekday}）`;
+}
+
+// 目前顯示的年月，以及選中的日期（預設今天）。
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-11
+let selectedDateKey = todayKey();
+
+/** 依 dueDate 把待辦分組：{ "YYYY-MM-DD": [todo, ...] }。 */
+function groupTodosByDate() {
+  const map = new Map();
+  todos.forEach((t) => {
+    if (!t.dueDate) return;
+    if (!map.has(t.dueDate)) map.set(t.dueDate, []);
+    map.get(t.dueDate).push(t);
+  });
+  return map;
+}
+
+/**
+ * 產生月曆格子資料：固定 6×7＝42 格，前後補上個月／下個月的日期，
+ * 維持格線完整（那些日期會用淺灰顯示）。
+ */
+function buildCalendarCells(year, month) {
+  const firstWeekday = new Date(year, month, 1).getDay(); // 0=週日
+  const cells = [];
+  // 從當月 1 號往前推到該週的週日
+  const start = new Date(year, month, 1 - firstWeekday);
+
+  for (let i = 0; i < CAL_ROWS * WEEKDAY_COUNT; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    cells.push({
+      key: toDateKey(d),
+      dayNumber: d.getDate(),
+      inCurrentMonth: d.getMonth() === month && d.getFullYear() === year,
+    });
+  }
+  return cells;
+}
+
+function renderCalendar() {
+  calTitleEl.textContent = `${calYear}年${calMonth + 1}月`;
+
+  const byDate = groupTodosByDate();
+  const today = todayKey();
+
+  calGridEl.innerHTML = "";
+  buildCalendarCells(calYear, calMonth).forEach((cell) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cal-cell";
+    btn.dataset.date = cell.key;
+    if (!cell.inCurrentMonth) btn.classList.add("is-outside");
+    if (cell.key === today) btn.classList.add("is-today");
+    if (cell.key === selectedDateKey) btn.classList.add("is-selected");
+
+    const num = document.createElement("span");
+    num.className = "cal-day-num";
+    num.textContent = String(cell.dayNumber);
+    btn.appendChild(num);
+
+    // 有待辦事項 → 數字下方顯示小圓點（未完成主色／已完成柔灰）
+    const dayTodos = byDate.get(cell.key) || [];
+    const dots = document.createElement("span");
+    dots.className = "cal-dots";
+    if (dayTodos.length > 0) {
+      const hasOpen = dayTodos.some((t) => !t.completedAt);
+      const dot = document.createElement("span");
+      dot.className = "cal-dot" + (hasOpen ? "" : " is-done");
+      dots.appendChild(dot);
+    }
+    btn.appendChild(dots);
+
+    btn.setAttribute(
+      "aria-label",
+      `${cell.key}${dayTodos.length ? `，${dayTodos.length} 件待辦` : ""}`
+    );
+    btn.addEventListener("click", () => {
+      selectedDateKey = cell.key;
+      // 點到上／下個月的日期時，順勢把月曆切到那個月
+      if (!cell.inCurrentMonth) {
+        const [y, m] = cell.key.split("-").map(Number);
+        calYear = y;
+        calMonth = m - 1;
+      }
+      renderCalendar();
+      renderDaySection();
+    });
+
+    calGridEl.appendChild(btn);
+  });
+}
+
+/** 月曆下方：選中日期的待辦清單（常駐區塊）。 */
+function renderDaySection() {
+  dayTitleEl.textContent = formatDayTitle(selectedDateKey);
+
+  const list = sortTodos(todos.filter((t) => t.dueDate === selectedDateKey));
+  dayListEl.innerHTML = "";
+  dayEmptyEl.hidden = list.length > 0;
+
+  list.forEach((todo) => {
+    const li = document.createElement("li");
+    li.className = "day-item";
+    if (todo.completedAt) li.classList.add("is-completed");
+    li.dataset.id = todo.id;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "day-check";
+    checkbox.checked = Boolean(todo.completedAt);
+    checkbox.setAttribute(
+      "aria-label",
+      `${todo.completedAt ? "取消完成" : "標記完成"}：${todo.title}`
+    );
+    checkbox.addEventListener("change", () => toggleTodoCompleted(todo.id));
+
+    const title = document.createElement("span");
+    title.className = "day-item-title";
+    title.textContent = todo.title;
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "day-delete";
+    del.textContent = "✕";
+    del.setAttribute("aria-label", `刪除：${todo.title}`);
+    del.addEventListener("click", () => {
+      if (confirm(`確定要刪除「${todo.title}」嗎？`)) deleteTodo(todo.id);
+    });
+
+    li.append(checkbox, title, del);
+    dayListEl.appendChild(li);
+  });
+}
+
+function changeMonth(delta) {
+  const d = new Date(calYear, calMonth + delta, 1);
+  calYear = d.getFullYear();
+  calMonth = d.getMonth();
+  renderCalendar();
+}
+
+calPrevEl.addEventListener("click", () => changeMonth(-1));
+calNextEl.addEventListener("click", () => changeMonth(1));
+
+/* ---- 快速跳轉年月 ---- */
+
+function initCalJumpOptions() {
+  const thisYear = new Date().getFullYear();
+  for (let y = thisYear - 5; y <= thisYear + 5; y++) {
+    const opt = document.createElement("option");
+    opt.value = String(y);
+    opt.textContent = `${y}年`;
+    calJumpYearEl.appendChild(opt);
+  }
+  for (let m = 1; m <= 12; m++) {
+    const opt = document.createElement("option");
+    opt.value = String(m - 1);
+    opt.textContent = `${m}月`;
+    calJumpMonthEl.appendChild(opt);
+  }
+}
+
+function toggleCalJump(forceOpen) {
+  const open = forceOpen === undefined ? calJumpEl.hidden : forceOpen;
+  calJumpEl.hidden = !open;
+  calTitleEl.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    calJumpYearEl.value = String(calYear);
+    calJumpMonthEl.value = String(calMonth);
+  }
+}
+
+calTitleEl.addEventListener("click", () => toggleCalJump());
+
+function applyCalJump() {
+  calYear = Number(calJumpYearEl.value);
+  calMonth = Number(calJumpMonthEl.value);
+  renderCalendar();
+}
+
+calJumpYearEl.addEventListener("change", applyCalJump);
+calJumpMonthEl.addEventListener("change", applyCalJump);
+
+calJumpTodayEl.addEventListener("click", () => {
+  const now = new Date();
+  calYear = now.getFullYear();
+  calMonth = now.getMonth();
+  selectedDateKey = todayKey();
+  toggleCalJump(false);
+  renderCalendar();
+  renderDaySection();
+});
+
+/* ---- 於選中日期新增待辦 ---- */
+
+dayAddFormEl.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const title = dayAddTitleEl.value.trim();
+  if (!title) return;
+  addTodo(title, selectedDateKey); // 自動帶入選中日期作為截止日
+  dayAddFormEl.reset();
+});
+
+/* ==========================================================================
  * 待辦事項資料層 (Supabase CRUD)
  * --------------------------------------------------------------------------
  * 每次異動後重新抓取整份清單再 render，確保與資料庫一致（個人待辦資料量小，
@@ -306,7 +559,19 @@ async function deleteTodo(id) {
  * 待辦事項 Rendering（UI 與原本一致）
  * ========================================================================== */
 
+/**
+ * 待辦資料變動後的統一重畫入口。
+ * 所有 CRUD（fetchTodos / addTodo / updateTodo / deleteTodo）都呼叫這個函式，
+ * 由它扇出去更新三個會顯示待辦的畫面，確保彼此同步。
+ */
 function renderTodos() {
+  renderTodoList(); // 抽屜裡的完整列表
+  renderCalendar(); // 月曆上的小圓點
+  renderDaySection(); // 月曆下方選中日期的清單
+}
+
+/** 抽屜裡的完整待辦列表（原本的 renderTodos，內容不變）。 */
+function renderTodoList() {
   const sorted = sortTodos(todos);
   todoListEl.innerHTML = "";
   todoEmptyEl.hidden = sorted.length > 0 || !todoLoadingEl.hidden;
@@ -814,6 +1079,36 @@ chatFormEl.addEventListener("submit", async (e) => {
 });
 
 /* ==========================================================================
+ * 待辦事項列表抽屜的開關（全域元件）
+ * --------------------------------------------------------------------------
+ * 右上角 ☰ 按鈕開啟／收起；點背景遮罩、按 ✕、或按 ESC 也會收起。
+ * 抽屜內的列表與表單沿用既有邏輯，這裡只負責顯示與否。
+ * ========================================================================== */
+
+function isDrawerOpen() {
+  return drawerEl.classList.contains("is-open");
+}
+
+function openDrawer() {
+  drawerEl.classList.add("is-open");
+  drawerBackdropEl.classList.add("is-open");
+  drawerToggleEl.setAttribute("aria-expanded", "true");
+}
+
+function closeDrawer() {
+  drawerEl.classList.remove("is-open");
+  drawerBackdropEl.classList.remove("is-open");
+  drawerToggleEl.setAttribute("aria-expanded", "false");
+}
+
+drawerToggleEl.addEventListener("click", () => {
+  if (isDrawerOpen()) closeDrawer();
+  else openDrawer();
+});
+drawerCloseEl.addEventListener("click", closeDrawer);
+drawerBackdropEl.addEventListener("click", closeDrawer);
+
+/* ==========================================================================
  * 浮動 AI 助理視窗的開關（全域元件）
  * --------------------------------------------------------------------------
  * 右下角圓形浮動按鈕：點擊展開／收起聊天視窗，展開時按鈕變成 ✕。
@@ -822,11 +1117,12 @@ chatFormEl.addEventListener("submit", async (e) => {
  * ========================================================================== */
 
 function isChatPanelOpen() {
-  return !chatPanelEl.hidden;
+  return chatPanelEl.classList.contains("is-open");
 }
 
 function openChatPanel() {
-  chatPanelEl.hidden = false;
+  // 用 class 控制顯示（而非 hidden 屬性），才能做展開／收起的過渡動畫。
+  chatPanelEl.classList.add("is-open");
   chatFabEl.classList.add("is-open");
   chatFabEl.textContent = "✕";
   chatFabEl.setAttribute("aria-expanded", "true");
@@ -837,7 +1133,7 @@ function openChatPanel() {
 }
 
 function closeChatPanel() {
-  chatPanelEl.hidden = true;
+  chatPanelEl.classList.remove("is-open");
   chatFabEl.classList.remove("is-open");
   chatFabEl.textContent = "💬";
   chatFabEl.setAttribute("aria-expanded", "false");
@@ -859,9 +1155,12 @@ document.addEventListener("click", (e) => {
   closeChatPanel();
 });
 
-// ESC 收起。
+// ESC 收起浮層（聊天視窗、列表抽屜、年月跳轉選單）。
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && isChatPanelOpen()) closeChatPanel();
+  if (e.key !== "Escape") return;
+  if (isChatPanelOpen()) closeChatPanel();
+  if (isDrawerOpen()) closeDrawer();
+  if (!calJumpEl.hidden) toggleCalJump(false);
 });
 
 /* ==========================================================================
@@ -894,12 +1193,19 @@ function renderAuthState(user) {
     renderChatMessages();
     fetchTodos();
   } else {
-    // 登出後清掉畫面上的資料，避免殘留，並收起浮動聊天視窗。
+    // 登出後清掉畫面上的資料，避免殘留，並收起所有浮層。
     todos = [];
     todoListEl.innerHTML = "";
     todoEmptyEl.hidden = true;
+    calGridEl.innerHTML = "";
+    dayListEl.innerHTML = "";
     closeChatPanel();
+    closeDrawer();
+    toggleCalJump(false);
   }
+
+  // 登入狀態已確定、畫面也備妥，可以收掉啟動畫面了。
+  hideSplash();
 }
 
 /**
@@ -965,12 +1271,35 @@ logoutBtn.addEventListener("click", async () => {
 });
 
 /* ==========================================================================
+ * 啟動畫面 (Splash)
+ * ========================================================================== */
+
+let splashHidden = false;
+
+/** 淡出並移除啟動畫面（重複呼叫安全）。 */
+function hideSplash() {
+  if (splashHidden || !splashEl) return;
+  splashHidden = true;
+  splashEl.classList.add("is-hiding");
+  // 等淡出動畫跑完再從版面移除，避免它蓋住底下的操作。
+  setTimeout(() => splashEl.remove(), 400);
+}
+
+/* ==========================================================================
  * 初始化 (Init)
  * ========================================================================== */
 
 async function init() {
+  // 月曆先畫出來（即使還沒有資料），讓啟動畫面淡出後就有完整版面。
+  initCalJumpOptions();
+  renderCalendar();
+  renderDaySection();
+
   // 每分鐘更新一次聊天訊息的相對時間顯示。
   setInterval(refreshChatTimes, 60000);
+
+  // 保險：萬一 Supabase 初始化卡住或出錯，也不要讓啟動畫面永遠蓋著整頁。
+  setTimeout(hideSplash, 5000);
 
   // 監聽登入狀態變化（登入、登出、token 更新都會觸發）。
   supabaseClient.auth.onAuthStateChange((_event, session) => {
