@@ -78,15 +78,25 @@ const calTitleEl = document.getElementById("cal-title");
 const calPrevEl = document.getElementById("cal-prev");
 const calNextEl = document.getElementById("cal-next");
 const calJumpEl = document.getElementById("cal-jump");
-const calJumpYearEl = document.getElementById("cal-jump-year");
-const calJumpMonthEl = document.getElementById("cal-jump-month");
+const calJumpBackdropEl = document.getElementById("cal-jump-backdrop");
+const calJumpCloseEl = document.getElementById("cal-jump-close");
+const calJumpYearLabelEl = document.getElementById("cal-jump-year-label");
+const calJumpYearPrevEl = document.getElementById("cal-jump-year-prev");
+const calJumpYearNextEl = document.getElementById("cal-jump-year-next");
+const calJumpMonthsEl = document.getElementById("cal-jump-months");
 const calJumpTodayEl = document.getElementById("cal-jump-today");
 
 const dayTitleEl = document.getElementById("day-title");
 const dayListEl = document.getElementById("day-list");
 const dayEmptyEl = document.getElementById("day-empty");
-const dayAddFormEl = document.getElementById("day-add-form");
-const dayAddTitleEl = document.getElementById("day-add-title");
+const dayAddBtnEl = document.getElementById("day-add-btn");
+
+const addTodoModalEl = document.getElementById("add-todo-modal");
+const addTodoBackdropEl = document.getElementById("add-todo-backdrop");
+const addTodoCloseEl = document.getElementById("add-todo-close");
+const addTodoFormEl = document.getElementById("add-todo-form");
+const addTodoTitleEl = document.getElementById("add-todo-title");
+const addTodoDateEl = document.getElementById("add-todo-date");
 
 /* ==========================================================================
  * 狀態 (State)
@@ -432,63 +442,122 @@ function changeMonth(delta) {
 calPrevEl.addEventListener("click", () => changeMonth(-1));
 calNextEl.addEventListener("click", () => changeMonth(1));
 
-/* ---- 快速跳轉年月 ---- */
+/* ==========================================================================
+ * 年月選擇浮層（全域元件）
+ * --------------------------------------------------------------------------
+ * 點月曆標題開啟：年份用左右箭頭切換、月份用 3×4 九宮格點選，
+ * 選定月份後自動關閉並跳轉。開關慣例與側邊抽屜一致（.is-open + 遮罩 + ESC）。
+ * ========================================================================== */
 
-function initCalJumpOptions() {
-  const thisYear = new Date().getFullYear();
-  for (let y = thisYear - 5; y <= thisYear + 5; y++) {
-    const opt = document.createElement("option");
-    opt.value = String(y);
-    opt.textContent = `${y}年`;
-    calJumpYearEl.appendChild(opt);
-  }
-  for (let m = 1; m <= 12; m++) {
-    const opt = document.createElement("option");
-    opt.value = String(m - 1);
-    opt.textContent = `${m}月`;
-    calJumpMonthEl.appendChild(opt);
+// 浮層內「正在瀏覽」的年份。與 calYear 分開，這樣切年份時
+// 月曆不會跟著跳動，要等使用者點了月份才真正套用。
+let calJumpYear = calYear;
+
+function isCalJumpOpen() {
+  return calJumpEl.classList.contains("is-open");
+}
+
+function openCalJump() {
+  calJumpYear = calYear; // 每次開啟都從目前顯示的年份開始
+  renderCalJump();
+  calJumpEl.classList.add("is-open");
+  calJumpBackdropEl.classList.add("is-open");
+  calTitleEl.setAttribute("aria-expanded", "true");
+}
+
+function closeCalJump() {
+  calJumpEl.classList.remove("is-open");
+  calJumpBackdropEl.classList.remove("is-open");
+  calTitleEl.setAttribute("aria-expanded", "false");
+}
+
+/** 畫出年份標題與 12 個月份格子（3 欄 × 4 列）。 */
+function renderCalJump() {
+  calJumpYearLabelEl.textContent = `${calJumpYear}年`;
+
+  calJumpMonthsEl.innerHTML = "";
+  for (let m = 0; m < 12; m++) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cal-jump-month";
+    btn.textContent = `${m + 1}月`;
+    // 標出目前月曆所在的年月
+    if (calJumpYear === calYear && m === calMonth) {
+      btn.classList.add("is-current");
+      btn.setAttribute("aria-current", "true");
+    }
+    btn.addEventListener("click", () => {
+      calYear = calJumpYear;
+      calMonth = m;
+      closeCalJump(); // 選定後自動關閉
+      renderCalendar();
+    });
+    calJumpMonthsEl.appendChild(btn);
   }
 }
 
-function toggleCalJump(forceOpen) {
-  const open = forceOpen === undefined ? calJumpEl.hidden : forceOpen;
-  calJumpEl.hidden = !open;
-  calTitleEl.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) {
-    calJumpYearEl.value = String(calYear);
-    calJumpMonthEl.value = String(calMonth);
-  }
+function changeCalJumpYear(delta) {
+  calJumpYear += delta;
+  renderCalJump();
 }
 
-calTitleEl.addEventListener("click", () => toggleCalJump());
-
-function applyCalJump() {
-  calYear = Number(calJumpYearEl.value);
-  calMonth = Number(calJumpMonthEl.value);
-  renderCalendar();
-}
-
-calJumpYearEl.addEventListener("change", applyCalJump);
-calJumpMonthEl.addEventListener("change", applyCalJump);
+calTitleEl.addEventListener("click", () => {
+  if (isCalJumpOpen()) closeCalJump();
+  else openCalJump();
+});
+calJumpCloseEl.addEventListener("click", closeCalJump);
+calJumpBackdropEl.addEventListener("click", closeCalJump);
+calJumpYearPrevEl.addEventListener("click", () => changeCalJumpYear(-1));
+calJumpYearNextEl.addEventListener("click", () => changeCalJumpYear(1));
 
 calJumpTodayEl.addEventListener("click", () => {
   const now = new Date();
   calYear = now.getFullYear();
   calMonth = now.getMonth();
   selectedDateKey = todayKey();
-  toggleCalJump(false);
+  closeCalJump();
   renderCalendar();
   renderDaySection();
 });
 
-/* ---- 於選中日期新增待辦 ---- */
+/* ==========================================================================
+ * 新增待辦 modal（全域元件）
+ * --------------------------------------------------------------------------
+ * 取代原本常駐在當日清單下方的輸入欄位。開啟時日期自動帶入目前選中的日期。
+ * ========================================================================== */
 
-dayAddFormEl.addEventListener("submit", (e) => {
+function isAddTodoOpen() {
+  return addTodoModalEl.classList.contains("is-open");
+}
+
+function openAddTodo() {
+  addTodoFormEl.reset();
+  // 沿用原本「自動帶入選中日期」的行為。
+  addTodoDateEl.value = selectedDateKey;
+  addTodoModalEl.classList.add("is-open");
+  addTodoBackdropEl.classList.add("is-open");
+  dayAddBtnEl.setAttribute("aria-expanded", "true");
+  // 刻意不自動 focus 輸入框：與 PR #19 對聊天輸入框的處理一致，
+  // 手機上自動 focus 會立刻喚起鍵盤、把畫面往上推，體驗較差。
+}
+
+function closeAddTodo() {
+  addTodoModalEl.classList.remove("is-open");
+  addTodoBackdropEl.classList.remove("is-open");
+  dayAddBtnEl.setAttribute("aria-expanded", "false");
+}
+
+dayAddBtnEl.addEventListener("click", openAddTodo);
+addTodoCloseEl.addEventListener("click", closeAddTodo);
+addTodoBackdropEl.addEventListener("click", closeAddTodo);
+
+addTodoFormEl.addEventListener("submit", (e) => {
   e.preventDefault();
-  const title = dayAddTitleEl.value.trim();
-  if (!title) return;
-  addTodo(title, selectedDateKey); // 自動帶入選中日期作為截止日
-  dayAddFormEl.reset();
+  const title = addTodoTitleEl.value.trim();
+  const dueDate = addTodoDateEl.value;
+  if (!title || !dueDate) return;
+  closeAddTodo();
+  addTodo(title, dueDate); // 內含 fetchTodos() → renderTodos() 單一入口
 });
 
 /* ==========================================================================
@@ -1455,12 +1524,13 @@ document.addEventListener("click", (e) => {
   closeChatPanel();
 });
 
-// ESC 收起浮層（聊天視窗、列表抽屜、年月跳轉選單）。
+// ESC 收起浮層（聊天視窗、列表抽屜、年月選擇、新增待辦 modal）。
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (isChatPanelOpen()) closeChatPanel();
   if (isDrawerOpen()) closeDrawer();
-  if (!calJumpEl.hidden) toggleCalJump(false);
+  if (isCalJumpOpen()) closeCalJump();
+  if (isAddTodoOpen()) closeAddTodo();
 });
 
 /* ==========================================================================
@@ -1502,7 +1572,8 @@ function renderAuthState(user) {
     closeChatPanel();
     closeDrawer();
     closeTodosView(); // 關閉全部待辦畫面，下次登入回到月曆
-    toggleCalJump(false);
+    closeCalJump();
+    closeAddTodo();
   }
 
   // 登入狀態已確定、畫面也備妥，可以收掉啟動畫面了。
@@ -1588,7 +1659,7 @@ function hideSplash() {
 
 async function init() {
   // 月曆先畫出來（即使還沒有資料），讓啟動畫面淡出後就有完整版面。
-  initCalJumpOptions();
+  // 年月選擇浮層的內容改為開啟時才產生（見 openCalJump），不需預先初始化。
   renderCalendar();
   renderDaySection();
 
