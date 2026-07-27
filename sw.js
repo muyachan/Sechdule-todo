@@ -24,18 +24,22 @@
 
 // 每次調整下面 APP_SHELL 清單或快取邏輯時，把版本號 +1，
 // 讓使用者的瀏覽器建立新的快取、清掉舊的。
-const CACHE_NAME = "schedule-todo-shell-v12";
+const CACHE_NAME = "schedule-todo-shell-v13";
 
 // 需要跟 index.html 裡的 ?v=N 保持一致，否則快取到的會是舊版檔案。
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=24",
-  "./config.js?v=24",
-  "./script.js?v=24",
+  "./style.css?v=25",
+  "./config.js?v=25",
+  "./script.js?v=25",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  // Mia（AI 助理）的頭像。兩種尺寸都快取：由 srcset 依螢幕密度挑一張，
+  // 事先不知道使用者的裝置會選哪一張，離線時兩張都要拿得到。
+  "./icons/mia-avatar-96.png",
+  "./icons/mia-avatar-192.png",
   // 底部導航列的手繪風圖示。雖然目前是以 inline SVG 嵌在 index.html 裡
   // （才能用 currentColor 換色），這裡仍一併快取原始檔，讓它們離線可用、
   // 之後若改成外部引用也不會漏掉。

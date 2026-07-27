@@ -45,9 +45,6 @@ const userEmailEl = document.getElementById("user-email");
 const todoListEl = document.getElementById("todo-list");
 const todoEmptyEl = document.getElementById("todo-empty");
 const todoLoadingEl = document.getElementById("todo-loading");
-const todoFormEl = document.getElementById("todo-form");
-const todoTitleInput = document.getElementById("todo-title");
-const todoDueDateInput = document.getElementById("todo-due-date");
 
 const chatMessagesEl = document.getElementById("chat-messages");
 const chatFormEl = document.getElementById("chat-form");
@@ -109,8 +106,6 @@ const addTodoDateEl = document.getElementById("add-todo-date");
  * @type {Array<{id:string, title:string, dueDate:string, createdAt:string, updatedAt:string, completedAt:string|null}>}
  */
 let todos = [];
-
-let editingId = null;
 
 /* ==========================================================================
  * 工具函式
@@ -394,7 +389,8 @@ function renderCalendar() {
 function renderDaySection() {
   dayTitleEl.textContent = formatDayTitle(selectedDateKey);
 
-  const list = sortTodos(todos.filter((t) => t.dueDate === selectedDateKey));
+  // 與待辦事項一覽同一套順序：勾選後留在原位，不因為倒數中就掉到底部。
+  const list = sortForDisplay(todos.filter((t) => t.dueDate === selectedDateKey));
   dayListEl.innerHTML = "";
   dayEmptyEl.hidden = list.length > 0;
 
@@ -817,8 +813,159 @@ function buildUndoBar(id) {
 }
 
 /* ==========================================================================
+ * 就地編輯（點標題文字直接改字）
+ * --------------------------------------------------------------------------
+ * 狀態放在模組層級、DOM 之外，理由與上面的 pendingArchive 完全一樣：
+ * renderTodos() 會把整份列表重畫，狀態若掛在 DOM 上就會隨重畫消失。
+ * 這裡除了「哪一列在編輯」之外，還要記住「目前輸入到什麼」與「游標在哪」，
+ * 否則編輯途中若有任何重繪（例如另一列倒數結束觸發 fetchTodos），
+ * 使用者打到一半的字和游標位置就會被洗掉。
+ *
+ * 只改標題。截止日期是唯讀的，這裡刻意不提供任何日期編輯入口。
+ * ========================================================================== */
+
+/** 正在就地編輯的待辦 id（沒有就是 null）。 */
+let inlineEditId = null;
+/** 編輯中的即時文字（不是 todo.title，那是還沒儲存的內容）。 */
+let inlineEditValue = "";
+/** 編輯中的游標／選取範圍 {start, end}。 */
+let inlineEditCaret = null;
+/**
+ * 重繪進行中的旗標。
+ * 重畫列表時舊的 input 會被移除，瀏覽器會對它送出 blur —— 那不是使用者
+ * 主動失焦，不能當成「儲存」。用這個旗標把重繪期間的 blur 擋掉。
+ */
+let isRerendering = false;
+
+function isInlineEditing(id) {
+  return inlineEditId === id;
+}
+
+function startInlineEdit(todo) {
+  // 倒數封存中不進編輯，避免兩種暫存狀態打架。
+  if (isPendingArchive(todo.id)) return;
+  inlineEditId = todo.id;
+  inlineEditValue = todo.title;
+  inlineEditCaret = { start: todo.title.length, end: todo.title.length };
+  renderTodos();
+}
+
+function clearInlineEdit() {
+  inlineEditId = null;
+  inlineEditValue = "";
+  inlineEditCaret = null;
+}
+
+/** ESC：捨棄編輯內容，還原成原本的標題。 */
+function cancelInlineEdit() {
+  if (!inlineEditId) return;
+  clearInlineEdit();
+  renderTodos();
+}
+
+/**
+ * Enter 或失焦：儲存。
+ * 內容沒變、或被清成空白時一律視同取消（不允許把標題存成空字串）。
+ */
+async function commitInlineEdit() {
+  if (!inlineEditId) return;
+  const id = inlineEditId;
+  const value = inlineEditValue.trim();
+  const todo = todos.find((t) => t.id === id);
+  clearInlineEdit();
+
+  if (!todo || !value || value === todo.title) {
+    renderTodos();
+    return;
+  }
+  await updateTodo(id, { title: value }); // 內含 fetchTodos() → renderTodos()
+}
+
+/** 建立取代標題文字的編輯框，事件行為：Enter 存、ESC 取消、失焦存。 */
+function buildInlineEditInput(todo) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "todo-title-input";
+  input.maxLength = 200;
+  input.value = inlineEditValue;
+  input.setAttribute("aria-label", `編輯待辦標題：${todo.title}`);
+
+  const captureCaret = () => {
+    inlineEditCaret = {
+      start: input.selectionStart,
+      end: input.selectionEnd,
+    };
+  };
+
+  input.addEventListener("input", () => {
+    inlineEditValue = input.value;
+    captureCaret();
+  });
+  // 方向鍵、點擊、拖曳選取都會移動游標，一併記錄，重繪後才回得到原位。
+  input.addEventListener("keyup", captureCaret);
+  input.addEventListener("click", captureCaret);
+  input.addEventListener("select", captureCaret);
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      // 這個 ESC 是「取消編輯」，不要再冒泡到全域的收起浮層處理，
+      // 否則會順手把聊天視窗／抽屜一起關掉。
+      e.stopPropagation();
+      cancelInlineEdit();
+      return;
+    }
+    if (e.key !== "Enter") return;
+    // 中文輸入法選字中的 Enter 是「確認選字」，不能當成儲存。
+    if (e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    commitInlineEdit();
+  });
+
+  input.addEventListener("blur", () => {
+    // 重繪造成的 blur 不算數（見 isRerendering 的說明）。
+    if (isRerendering || !input.isConnected) return;
+    commitInlineEdit();
+  });
+
+  return input;
+}
+
+/**
+ * 重繪後把焦點與游標放回編輯框。
+ * 一定要等元素進了文件才做得到，所以統一在 renderTodos() 的最後執行，
+ * 而不是在建立 input 的當下。
+ */
+function restoreInlineEditFocus() {
+  if (!inlineEditId) return;
+  const input = todoListEl.querySelector(".todo-title-input");
+  if (!input) return;
+  if (document.activeElement !== input) input.focus();
+  if (inlineEditCaret) {
+    input.setSelectionRange(inlineEditCaret.start, inlineEditCaret.end);
+  }
+}
+
+/* ==========================================================================
  * 待辦事項 Rendering（UI 與原本一致）
  * ========================================================================== */
+
+/**
+ * 排序時把「正在倒數封存」的項目當作還沒完成，讓它勾選後留在原位，
+ * 不會立刻掉到清單底部——3 秒後本來就要消失了，中途再跳一次位置只會
+ * 讓人找不到「撤銷」。
+ *
+ * sortTodos() 的規則本身完全沒有改動：這裡只是餵給它一份把 completedAt
+ * 遮蔽掉的副本用來決定順序，最後回傳的仍是原本的 todo 物件
+ *（所以 checkbox 的勾選狀態、完成樣式都還是讀得到真實的 completedAt）。
+ */
+function sortForDisplay(list) {
+  const masked = list.map((t) =>
+    isPendingArchive(t.id) ? { ...t, completedAt: null } : t
+  );
+  const byId = new Map(list.map((t) => [t.id, t]));
+  return sortTodos(masked).map((t) => byId.get(t.id));
+}
 
 /**
  * 待辦資料變動後的統一重畫入口。
@@ -826,9 +973,15 @@ function buildUndoBar(id) {
  * 由它扇出去更新三個會顯示待辦的畫面，確保彼此同步。
  */
 function renderTodos() {
+  // 重繪期間移除舊的編輯框會觸發 blur，要先立旗標把它擋掉，
+  // 否則每次重畫都會被誤判成「使用者失焦 → 儲存並結束編輯」。
+  isRerendering = true;
   renderTodoList(); // #todos-view 全螢幕檢視裡的完整列表
   renderCalendar(); // 月曆上的小圓點
   renderDaySection(); // 月曆下方選中日期的清單
+  isRerendering = false;
+  // 新的編輯框已經在文件裡了，把焦點與游標放回去。
+  restoreInlineEditFocus();
 }
 
 /**
@@ -837,7 +990,7 @@ function renderTodos() {
  * 這個函式不需要改動就自動指向新的容器，維持單一重繪入口。
  */
 function renderTodoList() {
-  const sorted = sortTodos(todos);
+  const sorted = sortForDisplay(todos);
   todoListEl.innerHTML = "";
   todoEmptyEl.hidden = sorted.length > 0 || !todoLoadingEl.hidden;
 
@@ -850,26 +1003,24 @@ function renderTodoList() {
     } else if (isOverdue(todo.dueDate)) {
       li.classList.add("is-overdue");
     }
+    if (isInlineEditing(todo.id)) li.classList.add("is-editing");
     li.dataset.id = todo.id;
 
-    if (editingId === todo.id) {
-      li.appendChild(buildEditForm(todo));
-    } else {
-      li.appendChild(buildDisplayRow(todo));
-    }
-
+    li.appendChild(buildDisplayRow(todo));
     todoListEl.appendChild(li);
   });
 }
 
 /**
- * 全部待辦畫面的一列：只有「勾選框 ｜ 文字 ｜ ✕」。
- * 編輯功能保留成隱藏入口——點文字即可進入編輯。
- * ✕ 是封存（archived_at），不是刪除。
+ * 待辦事項一覽的一列：「勾選框 ｜ 標題＋截止日期 ｜ ✕」。
+ *
+ * 標題點下去就地變成輸入框（不開 modal）；截止日期顯示在標題下方第二行，
+ * 是唯讀的，沒有任何編輯入口。✕ 是封存（archived_at），不是刪除。
  */
 function buildDisplayRow(todo) {
   const wrapper = document.createDocumentFragment();
   const pending = isPendingArchive(todo.id);
+  const editing = isInlineEditing(todo.id);
 
   const checkboxLabel = document.createElement("label");
   checkboxLabel.className = "todo-checkbox";
@@ -877,6 +1028,8 @@ function buildDisplayRow(todo) {
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
   checkbox.checked = Boolean(todo.completedAt);
+  // 編輯中不可勾選：避免「改字」與「完成→倒數封存」兩件事同時發生。
+  checkbox.disabled = editing;
   checkbox.setAttribute(
     "aria-label",
     `${todo.completedAt ? "取消完成" : "標記完成"}：${todo.title}`
@@ -889,34 +1042,41 @@ function buildDisplayRow(todo) {
   const main = document.createElement("div");
   main.className = "todo-main";
 
-  const titleEl = document.createElement("div");
-  titleEl.className = "todo-title";
-  titleEl.textContent = todo.title;
-  // 隱藏的編輯入口：點文字進入編輯（原本的編輯按鈕已移除）。
-  titleEl.setAttribute("role", "button");
-  titleEl.setAttribute("tabindex", "0");
-  titleEl.title = "點擊編輯";
-  const openEditor = () => {
-    if (isPendingArchive(todo.id)) return; // 倒數中不進編輯，避免狀態打架
-    editingId = todo.id;
-    renderTodos();
-  };
-  titleEl.addEventListener("click", openEditor);
-  titleEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      openEditor();
-    }
-  });
+  if (editing) {
+    main.appendChild(buildInlineEditInput(todo));
+  } else {
+    const titleEl = document.createElement("div");
+    titleEl.className = "todo-title";
+    titleEl.textContent = todo.title;
+    // 編輯入口：點文字就地編輯。
+    titleEl.setAttribute("role", "button");
+    titleEl.setAttribute("tabindex", "0");
+    titleEl.title = "點擊編輯";
+    titleEl.addEventListener("click", () => startInlineEdit(todo));
+    titleEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        startInlineEdit(todo);
+      }
+    });
+    main.appendChild(titleEl);
+  }
 
-  main.appendChild(titleEl);
-  // 倒數中：文字下方顯示「已完成 · 撤銷」。
+  // 第二行：截止日期。淡灰、字級比標題小，永遠獨立一行，唯讀。
+  const dueEl = document.createElement("div");
+  dueEl.className = "todo-due";
+  dueEl.textContent = formatDate(todo.dueDate);
+  main.appendChild(dueEl);
+
+  // 倒數中：再往下顯示「已完成 · 撤銷」。
   if (pending) main.appendChild(buildUndoBar(todo.id));
 
   const archiveBtn = document.createElement("button");
   archiveBtn.type = "button";
   archiveBtn.className = "todo-archive";
   archiveBtn.textContent = "✕";
+  // 編輯中不可封存：同上，避免這一列一邊被改字一邊被移除。
+  archiveBtn.disabled = editing;
   archiveBtn.setAttribute("aria-label", `封存：${todo.title}`);
   archiveBtn.title = "封存";
   archiveBtn.addEventListener("click", () => archiveTodo(todo.id));
@@ -927,59 +1087,6 @@ function buildDisplayRow(todo) {
   wrapper.appendChild(container);
   return wrapper;
 }
-
-function buildEditForm(todo) {
-  const form = document.createElement("form");
-  form.className = "todo-edit-form";
-
-  const titleInput = document.createElement("input");
-  titleInput.type = "text";
-  titleInput.required = true;
-  titleInput.maxLength = 200;
-  titleInput.value = todo.title;
-
-  const dateInput = document.createElement("input");
-  dateInput.type = "date";
-  dateInput.required = true;
-  dateInput.value = todo.dueDate;
-
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "submit";
-  saveBtn.className = "btn btn-primary btn-sm";
-  saveBtn.textContent = "儲存";
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "btn btn-secondary btn-sm";
-  cancelBtn.textContent = "取消";
-  cancelBtn.addEventListener("click", () => {
-    editingId = null;
-    renderTodos();
-  });
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const newTitle = titleInput.value.trim();
-    if (!newTitle) return;
-    editingId = null;
-    updateTodo(todo.id, { title: newTitle, dueDate: dateInput.value });
-  });
-
-  form.append(titleInput, dateInput, saveBtn, cancelBtn);
-  return form;
-}
-
-todoFormEl.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const title = todoTitleInput.value.trim();
-  const dueDate = todoDueDateInput.value;
-  if (!title || !dueDate) return;
-
-  addTodo(title, dueDate);
-  todoFormEl.reset();
-  todoDueDateInput.value = new Date().toISOString().slice(0, 10);
-  todoTitleInput.focus();
-});
 
 /* ==========================================================================
  * AI 行程規劃對話區 (Chat) —— 呼叫 Supabase Edge Function，對話歷史存 localStorage
@@ -1039,11 +1146,27 @@ function scrollChatToBottom() {
   chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
 }
 
-/** 建立 AI 頭像元素。 */
+/** 頭像的顯示尺寸（px），需與 style.css 的 .chat-avatar 一致。 */
+const CHAT_AVATAR_SIZE = 30;
+
+/**
+ * 建立 Mia 的頭像元素。
+ *
+ * 兩種尺寸交給瀏覽器用 srcset + sizes 自己挑一張下載——標準行為就是
+ * 「只取一個候選」，不會兩張都載入。96 給一般密度、192 給高密度螢幕。
+ * 圓形裁切由 CSS 的 border-radius + object-fit 處理。
+ */
 function buildAvatar() {
-  const avatar = document.createElement("div");
+  const avatar = document.createElement("img");
   avatar.className = "chat-avatar";
-  avatar.textContent = "🤖";
+  avatar.width = CHAT_AVATAR_SIZE;
+  avatar.height = CHAT_AVATAR_SIZE;
+  avatar.srcset =
+    "icons/mia-avatar-96.png 96w, icons/mia-avatar-192.png 192w";
+  avatar.sizes = `${CHAT_AVATAR_SIZE}px`;
+  // 不支援 srcset 的舊瀏覽器才會用到 src；支援的一律走上面的候選清單。
+  avatar.src = "icons/mia-avatar-96.png";
+  avatar.alt = "";
   avatar.setAttribute("aria-hidden", "true");
   return avatar;
 }
@@ -1198,19 +1321,61 @@ function buildTransientAiRow(bubbleClass, textContent) {
   return row;
 }
 
+/** 等待回覆時插在對話區底部的三點泡泡的 id。 */
+const CHAT_TYPING_BUBBLE_ID = "chat-typing-bubble";
+
 /**
- * 顯示／隱藏輸入中指示器（固定在輸入框正上方的三顆點動畫列，
- * 見 index.html #chat-typing 與 style.css .chat-typing 系列樣式）。
- * 不再於對話區插入「思考中」泡泡。
+ * 對話區底部的「Mia 正在打字」泡泡：沿用 AI 訊息泡泡的樣式與進場動畫，
+ * 內容換成放大版的三顆點。
+ *
+ * 它不進 chatMessages 陣列、也不寫進 localStorage —— 純粹是暫時的視覺元素，
+ * 回覆抵達時直接移除。無障礙狀態已由 #chat-typing 那條指示器播報，
+ * 這裡標成 aria-hidden 避免螢幕閱讀器唸兩次。
+ */
+function buildTypingBubble() {
+  const row = document.createElement("div");
+  row.className = "chat-row ai chat-row-enter";
+  row.id = CHAT_TYPING_BUBBLE_ID;
+  row.setAttribute("aria-hidden", "true");
+  row.appendChild(buildAvatar());
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-message ai chat-typing-bubble";
+
+  const dots = document.createElement("span");
+  dots.className = "chat-typing-dots";
+  for (let i = 0; i < 3; i++) {
+    const dot = document.createElement("span");
+    dot.className = "chat-typing-dot";
+    dots.appendChild(dot);
+  }
+  bubble.appendChild(dots);
+
+  row.appendChild(bubble);
+  return row;
+}
+
+function removeTypingBubble() {
+  const el = document.getElementById(CHAT_TYPING_BUBBLE_ID);
+  if (el) el.remove();
+}
+
+/**
+ * 等待 AI 回覆時的兩個提示，刻意同時顯示：
+ *   1. 輸入框正上方那條窄的「Mia 輸入中」指示器（#chat-typing）
+ *   2. 對話區底部、AI 側的放大版三點泡泡
  */
 function showChatThinking() {
   chatTypingEl.hidden = false;
-  // 指示器會佔用聊天視窗內的一點高度，重新捲到底避免蓋住最後一則訊息。
+  removeTypingBubble(); // 保險：不要疊出第二顆
+  chatMessagesEl.appendChild(buildTypingBubble());
+  // 指示器與泡泡都會佔高度，重新捲到底讓泡泡可見、也不蓋住最後一則訊息。
   scrollChatToBottom();
 }
 
 function hideChatThinking() {
   chatTypingEl.hidden = true;
+  removeTypingBubble();
 }
 
 /** 顯示一則暫時的錯誤泡泡（不存進歷史，下次送出時會被重繪清掉）。 */
@@ -1572,12 +1737,12 @@ function renderAuthState(user) {
 
   if (loggedIn) {
     userEmailEl.textContent = user.email || "";
-    todoDueDateInput.value = new Date().toISOString().slice(0, 10);
     renderChatMessages();
     fetchTodos();
   } else {
     // 登出後清掉畫面上的資料，避免殘留，並收起所有浮層／回到月曆。
     todos = [];
+    clearInlineEdit(); // 編輯到一半登出，狀態不要留到下次登入
     todoListEl.innerHTML = "";
     todoEmptyEl.hidden = true;
     calGridEl.innerHTML = "";

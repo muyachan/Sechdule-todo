@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>" />
 
 <!-- ============ PWA 設定：manifest + meta 標籤 + 圖示 ============ -->
-<link rel="manifest" href="manifest.json?v=24" />
+<link rel="manifest" href="manifest.json?v=25" />
 <meta name="theme-color" content="#A8CFE3" />
 <!-- iOS Safari 不吃 manifest.json 的 display/name，需要另外用這些 meta 標籤設定
      「加入主畫面」後的全螢幕模式與名稱。 -->
@@ -28,7 +28,7 @@
         請把下方所有的 v=? 一起 +1，使用者的瀏覽器才會抓到最新版，
         而不是舊的快取檔。（sw.js 本身不用加版本參數，它的快取版本
         由 sw.js 檔案內的 CACHE_NAME 常數控制，見該檔案開頭註解。）-->
-<link rel="stylesheet" href="style.css?v=24" />
+<link rel="stylesheet" href="style.css?v=25" />
 </head>
 <body>
   <!-- ============ 啟動畫面（Splash）============
@@ -131,28 +131,12 @@
            內容就是原本抽屜裡那份完整列表，ID 全部沿用，因此
            renderTodoList() 這一路的重繪目標自動指向這裡，
            新增/編輯/刪除/打勾的既有邏輯完全不需修改。 -->
-      <section id="todos-view" class="todos-view" aria-label="全部待辦事項">
-        <h2 class="panel-title todos-view-title">全部待辦事項</h2>
+      <section id="todos-view" class="todos-view" aria-label="待辦事項一覽">
+        <h2 class="panel-title todos-view-title">待辦事項一覽</h2>
 
-        <form id="todo-form" class="todo-form">
-          <div class="field">
-            <label for="todo-title">事項名稱</label>
-            <input
-              type="text"
-              id="todo-title"
-              name="title"
-              placeholder="輸入待辦事項..."
-              required
-              maxlength="200"
-            />
-          </div>
-          <div class="field field-date">
-            <label for="todo-due-date">截止日期</label>
-            <input type="date" id="todo-due-date" name="dueDate" required />
-          </div>
-          <button type="submit" class="btn btn-primary">新增</button>
-        </form>
-
+        <!-- ⚠️ 這個畫面刻意沒有任何新增入口（既沒有表單，也沒有「＋」）。
+             新增待辦只從月曆頁的 modal 進入，是刻意的單一入口決定，
+             不要為了「方便」在這裡補回表單或按鈕。 -->
         <p id="todo-loading" class="empty-state" hidden>載入中...</p>
         <ul id="todo-list" class="todo-list"></ul>
         <p id="todo-empty" class="empty-state" hidden>目前沒有待辦事項，新增一筆開始吧！</p>
@@ -247,27 +231,29 @@
         class="chat-fab"
         aria-expanded="false"
         aria-controls="chat-panel"
-        aria-label="開啟 AI 助理"
+        aria-label="開啟 Mia"
       >💬</button>
 
       <div
         id="chat-panel"
         class="chat-panel"
         role="dialog"
-        aria-label="AI 行程規劃助理"
+        aria-label="Mia：AI 行程規劃助理"
       >
         <div class="chat-panel-head">
-          <h2 class="panel-title">AI 行程規劃助理</h2>
+          <h2 class="panel-title">Mia</h2>
           <p class="panel-hint">
-            已串接 Claude API，助理會參考你目前的待辦事項，跟你討論與規劃行程。
+            已串接 Claude API，Mia 會參考你目前的待辦事項，跟你討論與規劃行程。
           </p>
         </div>
 
         <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
 
-        <!-- 輸入中指示器：固定在輸入框正上方，等待 AI 回覆時顯示。 -->
+        <!-- 輸入中指示器：固定在輸入框正上方，等待 AI 回覆時顯示。
+             等待期間對話區底部還會另外插入一顆放大版的三點泡泡（見 script.js
+             的 showChatThinking），兩者是刻意同時存在的。 -->
         <div id="chat-typing" class="chat-typing" role="status" aria-live="polite" hidden>
-          <span class="chat-typing-text">輸入中</span>
+          <span class="chat-typing-text">Mia 輸入中</span>
           <span class="chat-typing-dots" aria-hidden="true">
             <span class="chat-typing-dot"></span>
             <span class="chat-typing-dot"></span>
@@ -390,8 +376,8 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
-  <script src="config.js?v=24"></script>
-  <script src="script.js?v=24"></script>
+  <script src="config.js?v=25"></script>
+  <script src="script.js?v=25"></script>
 
   <!-- 註冊 Service Worker（見 sw.js）：提供基本的 App Shell 快取，
        讓 PWA 開啟更快、離線時至少能顯示介面外殼。與待辦/聊天等
