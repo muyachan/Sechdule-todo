@@ -1,0 +1,54 @@
+name: Deploy Supabase Edge Functions
+
+# 只有 Edge Function 的原始碼或 Supabase 設定真的變動時才部署。
+# 前端檔案（index.html / script.js / style.css / sw.js ...）的 push
+# 不會觸發這支 workflow —— 那些是 GitHub Pages 的事，與這裡無關。
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/**"
+      - "supabase/config.toml"
+  # 保留手動觸發，方便在 GitHub 網頁上直接重跑一次部署。
+  workflow_dispatch:
+
+# 同一時間只允許一個部署在跑，避免短時間內連續合併時兩次部署互相覆蓋。
+# cancel-in-progress 刻意設為 false：部署到一半被取消，遠端會停在不確定的
+# 狀態，寧可排隊等前一次跑完。
+# （.github/workflows/daily-reminder.yml 目前沒有設 concurrency，
+#   而且 group 名稱是各 workflow 自己取的，兩者不會互相排擠。）
+concurrency:
+  group: deploy-supabase-edge-functions
+  cancel-in-progress: false
+
+# 這支 workflow 不寫入 repo，只需要讀取原始碼。
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # ⚠️ 這裡刻意不加 --no-verify-jwt 之類的旗標。
+      # JWT 驗證由 supabase/config.toml 的 [functions.bright-worker]
+      # verify_jwt 決定，指令列一旦覆寫，設定檔就形同虛設，
+      # 而且會出現「repo 裡寫 true、線上卻是 false」的落差。
+      #
+      # 不指定函式名稱＝部署 supabase/functions/ 底下的全部函式，
+      # 之後新增函式不用回來改這支 workflow。
+      - name: Deploy
+        env:
+          # 認證一律取自 GitHub Secrets，yml 內不寫死任何值。
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
