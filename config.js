@@ -18,4 +18,16 @@
 window.APP_CONFIG = {
   SUPABASE_URL: "https://qvokiftcyeptmokvrxcp.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_JeBElRNREZpvpJiH5eGHSw_d3h6cFOC",
+
+  /* ------------------------------------------------------------------------
+   * Web Push 的 VAPID 公鑰（base64url 字串，約 87 個字元）
+   * ------------------------------------------------------------------------
+   * ⚠️ 這裡要填的是「公鑰」。公鑰本來就會隨著訂閱請求送到推播服務，
+   *    公開沒有問題；「私鑰」則存在 GitHub Secrets 的 VAPID_PRIVATE_KEY，
+   *    只有發送推播的 GitHub Actions 用得到，絕對不要放進這個檔案。
+   *
+   * 留空時，抽屜裡的「每日提醒」開關會自動停用並顯示「尚未設定推播金鑰」，
+   * 不會拋錯，也不會去要通知權限。填好之後重新整理就會啟用。
+   * ---------------------------------------------------------------------- */
+  VAPID_PUBLIC_KEY: "",
 };

@@ -1,0 +1,8 @@
+# Node 相依套件。scripts/ 底下的排程腳本現在會用到 web-push，
+# GitHub Actions 每次執行時自己跑 npm ci 安裝，不進 repo。
+node_modules/
+
+# 本機執行腳本時可能會用到的環境變數檔。
+# ⚠️ 這裡面會有 service_role 金鑰與 VAPID 私鑰，絕對不能進 repo。
+.env
+.env.local

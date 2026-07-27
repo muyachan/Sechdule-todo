@@ -20,19 +20,23 @@
  *   - 導覽（頁面）請求離線且沒有快取可用時，退回快取中的 index.html，
  *     至少顯示介面外殼，而不是瀏覽器的離線錯誤頁。
  *   - 其他（跨來源）請求：不攔截，直接交給網路。
+ *
+ * 除了快取之外，這裡還處理 Web Push：
+ *   - push：收到推播時顯示系統通知。
+ *   - notificationclick：點擊通知後開啟／聚焦 App，並切到待辦一覽畫面。
  * ========================================================================== */
 
 // 每次調整下面 APP_SHELL 清單或快取邏輯時，把版本號 +1，
 // 讓使用者的瀏覽器建立新的快取、清掉舊的。
-const CACHE_NAME = "schedule-todo-shell-v14";
+const CACHE_NAME = "schedule-todo-shell-v15";
 
 // 需要跟 index.html 裡的 ?v=N 保持一致，否則快取到的會是舊版檔案。
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=26",
-  "./config.js?v=26",
-  "./script.js?v=26",
+  "./style.css?v=27",
+  "./config.js?v=27",
+  "./script.js?v=27",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -101,5 +105,86 @@ self.addEventListener("fetch", (event) => {
         return undefined;
       });
     })
+  );
+});
+
+/* ==========================================================================
+ * Web Push
+ * --------------------------------------------------------------------------
+ * 每天早上由 GitHub Actions（scripts/daily-reminder.mjs）用 web-push 發送，
+ * 內容是一段已加密的 JSON：{ title, body, url }。
+ * ========================================================================== */
+
+// 點擊通知後要前往的位置。用 hash 而不是查詢字串：
+//   - hash 不會進入 HTTP 請求，也不影響 Cache API 的比對鍵，
+//     '#todos' 仍然命中快取中的 './index.html'，離線一樣打得開。
+//   - 查詢字串（?view=todos）會讓 caches.match() 找不到對應項目，
+//     除非另外開 ignoreSearch，反而把快取邏輯弄複雜。
+// script.js 讀完這個 hash 後會立刻用 replaceState 清掉，只作用一次。
+const NOTIFICATION_URL = "./index.html#todos";
+
+// 同一個 tag 的通知會互相取代，避免連續幾天沒點開就在通知中心疊成一整排。
+const NOTIFICATION_TAG = "daily-reminder";
+
+self.addEventListener("push", (event) => {
+  // 沒有 payload、或 payload 不是預期的 JSON 時仍要顯示通知：
+  // 有些推播服務會送出不帶內容的「喚醒」訊息，而規範要求
+  // push 事件收到後一定要顯示一則通知，靜默吃掉會被瀏覽器警告
+  // （甚至撤銷推播權限），所以這裡一律退回一組預設文案。
+  let payload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch (_) {
+      payload = { body: event.data.text() };
+    }
+  }
+
+  const title = payload.title || "今天的待辦提醒";
+  const options = {
+    body: payload.body || "打開看看今天有什麼要做的吧",
+    icon: "./icons/icon-192.png",
+    badge: "./icons/icon-192.png",
+    tag: NOTIFICATION_TAG,
+    renotify: true,
+    // 帶著要開啟的位置，讓 notificationclick 不用再猜。
+    data: { url: payload.url || NOTIFICATION_URL },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = new URL(
+    (event.notification.data && event.notification.data.url) || NOTIFICATION_URL,
+    self.location.href
+  );
+
+  event.waitUntil(
+    (async () => {
+      // includeUncontrolled: true 很重要——App 可能是在這個 Service Worker
+      // 取得控制權之前就開好的（例如剛更新完版本），少了它會找不到那些分頁，
+      // 結果每次點通知都多開一個視窗。
+      const clientList = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+
+      // 已經開著就聚焦既有分頁，不要開新視窗。
+      for (const client of clientList) {
+        if (new URL(client.url).origin !== targetUrl.origin) continue;
+        await client.focus();
+        // 分頁已經載入過了，改用訊息通知它切到待辦一覽——
+        // 這時候改 hash 不會觸發任何重新載入，光靠網址是叫不動畫面的。
+        client.postMessage({ type: "navigate", view: "todos" });
+        return;
+      }
+
+      // 沒有開著的分頁才開新視窗，網址帶 #todos，
+      // script.js 載入時會讀到並直接切到待辦一覽。
+      await self.clients.openWindow(targetUrl.href);
+    })()
   );
 });

@@ -4,6 +4,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+// Supabase 會自動注入這個環境變數，不需要另外設定。
+// 只用來確認「每日提醒文案」那個模式的呼叫端確實是排程（見下方說明）。
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,16 +54,130 @@ const tools = [
   },
 ];
 
+/**
+ * 產生每日提醒的推播內文（一句話）。
+ *
+ * 刻意不帶 tools：這個模式只是生成文字，不應該碰資料庫。
+ * 內文要短——iOS 鎖定畫面大約兩行就截斷了，所以 prompt 裡明講字數上限，
+ * max_tokens 也壓低，模型想長篇大論也長不了。
+ */
+async function handleDailyNotification(todos: any[]) {
+  const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
+  const today = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(new Date());
+
+  const list = (todos || [])
+    .map((t: any) => `- ${t.title}（截止 ${t.due_date || t.dueDate || "未設定"}）`)
+    .join("\n");
+
+  const systemPrompt = `你是 Mia,幫使用者管理待辦事項。你們是熟人,講話不用客氣。
+
+現在要寫一則手機推播通知的內文,叫使用者起床看看今天的待辦。
+
+【硬性規則】
+- 只輸出通知內文本身,不要加標題、不要加引號、不要解釋
+- 最多 40 個字,一到兩句話。手機鎖定畫面兩行就截斷了,寧可短不要長
+- 標點符號一律使用全形(,。「」?!),不要使用半形逗號和句號
+- 不用顏文字和 emoji
+- 稱呼使用者用「你」
+- 不苛責拖延或逾期,頂多輕輕點出來
+- 語速慢、不用力,可以帶一點自嘲式的照顧感
+- 不要條列待辦,用講話的方式帶過,可以只提最重要的一兩件
+
+今天是 ${today}(台北時間)。`;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 200,
+        system: systemPrompt,
+        // 這裡不帶 tools：純生成文字,不應該動到任何資料。
+        messages: [
+          {
+            role: "user",
+            content: `今天要提醒的待辦事項共 ${todos?.length ?? 0} 件:\n${list}`,
+          },
+        ],
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return new Response(
+        JSON.stringify({ error: data.error?.message || "API 呼叫失敗" }),
+        { status: res.status, headers: jsonHeaders }
+      );
+    }
+
+    const text = (data.content || [])
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("")
+      .trim();
+
+    if (!text) {
+      return new Response(JSON.stringify({ error: "模型沒有回傳文字" }), {
+        status: 502,
+        headers: jsonHeaders,
+      });
+    }
+
+    return new Response(JSON.stringify({ text }), { headers: jsonHeaders });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 500,
+      headers: jsonHeaders,
+    });
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { messages, todos } = await req.json();
+    const { messages, todos, mode } = await req.json();
 
     // 建立帶有使用者身分的 Supabase client（RLS 會生效）
     const authHeader = req.headers.get("Authorization")!;
+
+    /* ----------------------------------------------------------------------
+     * 模式二：每日提醒的推播文案
+     * ----------------------------------------------------------------------
+     * 由 scripts/daily-reminder.mjs（GitHub Actions）呼叫，
+     * 輸入今天的待辦摘要，輸出一句話當作通知內文。不呼叫任何工具。
+     *
+     * ⚠️ 這個分支刻意放在下面 getUser() 之前，因為呼叫端帶的是
+     *    service_role 金鑰，那是一個合法 JWT（過得了 verify_jwt），
+     *    但它不代表任何一位使用者，getUser() 會拿不到 user 而回 401。
+     *
+     * ⚠️ 同時必須確認呼叫端「真的是」排程：verify_jwt 只保證 JWT 合法，
+     *    任何已登入使用者的 token 一樣過得了關。少了這道檢查，
+     *    前端就能無限次呼叫這個模式去燒 Anthropic 的額度。
+     *    比對整把金鑰是最直接的做法——service_role 只有 GitHub Actions 有。
+     * -------------------------------------------------------------------- */
+    if (mode === "daily-notification") {
+      if (authHeader !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
+        return new Response(
+          JSON.stringify({ error: "這個模式只開放給排程呼叫" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      return await handleDailyNotification(todos);
+    }
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });

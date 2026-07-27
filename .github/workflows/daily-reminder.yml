@@ -1,4 +1,4 @@
-name: Daily Todo Reminder to Discord
+name: Daily Todo Reminder (Discord + Web Push)
 
 on:
   schedule:
@@ -20,10 +20,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          # 有 package-lock.json 就啟用 npm 快取，之後每次跑不用重抓相依套件。
+          cache: "npm"
 
-      - name: Send daily reminder to Discord
+      # 腳本現在要用 web-push 套件，所以多了這一步。
+      # 用 npm ci 而不是 npm install：完全照 package-lock.json 安裝，
+      # 版本不會在某天自己跳動，排程行為才可重現。
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Send daily reminder
         env:
           SUPABASE_URL: "https://qvokiftcyeptmokvrxcp.supabase.co"
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Web Push 用的 VAPID 金鑰組。三個都沒設齊時腳本會略過推播、
+          # 只發 Discord，不會讓整個排程失敗。
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
         run: node scripts/daily-reminder.mjs
