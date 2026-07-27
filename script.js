@@ -185,32 +185,6 @@ function formatRelativeTime(dateStr) {
   return `${then.getFullYear()}/${then.getMonth() + 1}/${then.getDate()} ${hhmm}`;
 }
 
-/** 複製文字到剪貼簿，並在按鈕上短暫顯示「已複製」。 */
-async function copyToClipboard(text, btn) {
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      // 舊瀏覽器或非安全來源 (http) 的退回方案。
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
-    const original = btn.textContent;
-    btn.textContent = "已複製";
-    setTimeout(() => {
-      btn.textContent = original;
-    }, 1500);
-  } catch (err) {
-    console.warn("複製失敗：", err);
-  }
-}
-
 /** 將 Supabase 資料表的一列 (snake_case) 轉為前端使用的 todo 物件 (camelCase)。 */
 function mapRowToTodo(row) {
   return {
@@ -1147,7 +1121,7 @@ function scrollChatToBottom() {
 }
 
 /** 頭像的顯示尺寸（px），需與 style.css 的 .chat-avatar 一致。 */
-const CHAT_AVATAR_SIZE = 30;
+const CHAT_AVATAR_SIZE = 38;
 
 /**
  * 建立 Mia 的頭像元素。
@@ -1171,7 +1145,7 @@ function buildAvatar() {
   return avatar;
 }
 
-/** 建立一則訊息的 row（AI 訊息含頭像、複製按鈕；使用者訊息維持純文字）。 */
+/** 建立一則訊息的 row（AI 訊息含頭像；使用者訊息維持純文字）。 */
 function buildChatRow(msg) {
   const isUser = msg.role === "user";
   const row = document.createElement("div");
@@ -1181,20 +1155,6 @@ function buildChatRow(msg) {
 
   const bubble = document.createElement("div");
   bubble.className = `chat-message ${isUser ? "user" : "ai"}`;
-
-  if (!isUser) {
-    // AI 訊息右上角的「複製」按鈕（複製原始文字內容）。
-    const head = document.createElement("div");
-    head.className = "chat-bubble-head";
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "chat-copy-btn";
-    copyBtn.textContent = "複製";
-    copyBtn.setAttribute("aria-label", "複製這則 AI 回覆");
-    copyBtn.addEventListener("click", () => copyToClipboard(msg.content, copyBtn));
-    head.appendChild(copyBtn);
-    bubble.appendChild(head);
-  }
 
   const text = document.createElement("div");
   if (isUser) {

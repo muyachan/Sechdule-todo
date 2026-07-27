@@ -732,11 +732,16 @@ body {
 }
 
 /* 選取狀態的淺藍藥丸底：用 ::before 畫在圖示後方。
-   平時縮小且透明，選取時放大到 1 並淡入，切換才不會瞬間跳出來。 */
+   平時縮小且透明，選取時放大到 1 並淡入，切換才不會瞬間跳出來。
+   top 從 50% 改成 calc(50% - 4px)：跟下面 .bottom-nav-btn svg 的
+   translateY(-4px) 是同一件事的兩半——圖示用 transform 往上移，
+   這裡的定位用百分比＋transform，沒有共用的基準點可以只改一處，
+   所以兩邊都要手動位移同樣的 4px，藥丸底才會跟著圖示一起上移，
+   不會出現「圖示挪了、底色沒挪」的錯位。 */
 .bottom-nav-btn::before {
   content: "";
   position: absolute;
-  top: 50%;
+  top: calc(50% - 4px);
   left: 50%;
   width: 44px;
   height: 32px;
@@ -766,15 +771,24 @@ body {
 .bottom-nav-btn svg {
   display: block;
   position: relative; /* 疊在藥丸底之上 */
+  /* 整排圖示原本置中在導航列的完整高度內，貼著螢幕最下緣的安全區
+     上方，看起來偏低。用 transform 往上移一點——這裡特意不改
+     --bottom-nav-total 或改 padding/height 來調整位置，因為聊天
+     浮動按鈕、聊天視窗下緣、toast 的定位全部是從 --bottom-nav-total
+     算出來的，牽一髮動全身；transform 只影響視覺位置，不影響版面
+     尺寸，改這裡不會波及其他元件。 */
+  transform: translateY(-4px);
 }
 
 /* 切換區與動作區之間的細分隔線：畫在第 4 格左緣，
-   用絕對定位而非 border，才不會影響五格等寬。 */
+   用絕對定位而非 border，才不會影響五格等寬。
+   top 同樣往上收 4px，跟圖示與藥丸底一起移動，分隔線才會對齊圖示，
+   不會看起來偏低。 */
 .bottom-nav-group-start::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 50%;
+  top: calc(50% - 4px);
   transform: translateY(-50%);
   width: 1px;
   height: 24px;
@@ -1416,15 +1430,17 @@ input.todo-title-input:focus {
 
 /* Mia 的頭像：<img>，圓形裁切。object-fit: cover 保證非正方形的圖也不會
    被壓扁，是裁掉多餘的部分。尺寸需與 script.js 的 CHAT_AVATAR_SIZE 一致
-   （那裡用它算 srcset 的 sizes）。 */
+   （那裡用它算 srcset 的 sizes）。
+   細邊框用強調色（--color-nav-active，導航選取狀態同一個變數），
+   讓頭像在白底泡泡旁邊看得出輪廓，不是純裝飾配色。 */
 .chat-avatar {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 38px;
   border-radius: var(--radius-circle);
   object-fit: cover;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1.5px solid var(--color-nav-active);
 }
 
 .chat-message {
@@ -1433,8 +1449,20 @@ input.todo-title-input:focus {
   padding: 8px 12px;
   border-radius: var(--radius-card);
   font-size: 14px;
-  line-height: 1.4;
-  word-break: break-word;
+  /* 中文排版：行高拉高到 1.7（中文字密度高，1.4 太擠）。
+     word-break 用 normal + overflow-wrap: break-word，不用 break-all——
+     break-all 連英文單字、網址都會從中間切斷，normal + break-word 只在
+     真的放不下整個詞時才換行，一般文字仍照標準規則斷行。
+     line-break: strict 是這裡真正要修的問題：預設的寬鬆斷行規則允許
+     「「」（」這類開引號留在行尾、「，」「。」「」」跑到行首，
+     strict 套用嚴格的日中韓排版規則，兩者都不允許。
+     text-wrap: pretty 讓瀏覽器盡量避免段落最後一行只剩一兩個字（孤行），
+     不支援的瀏覽器會忽略這行，退回原本的排版，不影響功能。 */
+  line-height: 1.7;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-break: strict;
+  text-wrap: pretty;
   box-shadow: var(--shadow-sm);
 }
 
@@ -1456,31 +1484,6 @@ input.todo-title-input:focus {
   border: 1px solid var(--color-border);
   color: var(--color-text);
   border-bottom-left-radius: 4px;
-}
-
-/* AI 訊息右上角的複製按鈕 */
-.chat-bubble-head {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 2px;
-}
-.chat-copy-btn {
-  appearance: none;
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  font: inherit;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--color-text-muted);
-  padding: 0 8px;
-  cursor: pointer;
-  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
-    transform var(--dur-fast) var(--ease-bounce);
-}
-.chat-copy-btn:hover {
-  background: var(--color-bg-subtle);
-  color: var(--color-text);
 }
 
 /* AI 動過待辦資料庫時的小提示 */
@@ -1864,8 +1867,7 @@ input.todo-title-input:focus {
 .day-add-btn:active,
 .icon-btn:active,
 .todo-archive:active,
-.day-delete:active,
-.chat-copy-btn:active {
+.day-delete:active {
   transform: scale(0.96);
 }
 
@@ -1878,8 +1880,7 @@ input.todo-title-input:focus {
 .cal-jump-month,
 .day-add-btn,
 .todo-archive,
-.day-delete,
-.chat-copy-btn {
+.day-delete {
   transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
     border-color var(--dur-fast) ease,
     transform var(--dur-fast) var(--ease-bounce);
@@ -1928,7 +1929,6 @@ input.todo-title-input:focus {
   .icon-btn:active,
   .todo-archive:active,
   .day-delete:active,
-  .chat-copy-btn:active,
   .bottom-nav-btn:active {
     transform: none;
   }
