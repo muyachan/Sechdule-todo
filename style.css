@@ -62,10 +62,12 @@
   /* ---- 圓角 ----
      整體往圓潤、可愛的方向。所有 border-radius 一律引用這組變數，
      不要在規則裡寫死數值。 */
-  --radius-pill: 999px; /* 藥丸形：待辦列、按鈕、輸入框、標籤 */
+  --radius-pill: 999px; /* 藥丸形：按鈕、圖示鈕、一般輸入框、標籤 */
   --radius-card: 20px; /* 卡片：抽屜、modal、聊天視窗、底部導航列 */
   --radius-cell: 14px; /* 月曆日期格（圓角方塊，不是正圓） */
-  --radius-control: 999px; /* 小控制項：圖示鈕、勾選框容器 */
+  /* 圓角矩形：待辦列、聊天輸入框。這兩個元素會換行變高，全圓角在多行時
+     兩端會鼓成半圓、很怪，所以用固定的大圓角而不是 --radius-pill。 */
+  --radius-control: 18px;
   --radius-circle: 50%; /* 正圓：勾選框、X 鈕底、今天標記、頭像 */
 
   /* ---- 動態 ----
@@ -254,7 +256,8 @@ body {
   line-height: 1;
   color: var(--color-text-muted);
   padding: 6px 10px;
-  border-radius: var(--radius-control);
+  /* 圖示鈕是按鈕，維持全圓角。 */
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
     transform var(--dur-fast) var(--ease-bounce);
@@ -675,9 +678,17 @@ body {
   overflow-y: auto;
 }
 
+/* 上方的常駐新增表單已移除，標題與列表之間只留一點呼吸空間，
+   讓列表直接往上靠，不要留下表單原本佔的那片空白。 */
 .todos-view-title {
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   flex-shrink: 0;
+}
+
+/* 沒有表單擋著時，列表第一列會緊貼標題；空狀態文字也不需要原本
+   為了跟表單拉開距離而留的大 padding。 */
+.todos-view .empty-state {
+  padding: 16px 0 4px;
 }
 
 /* ==========================================================================
@@ -859,25 +870,13 @@ body {
 /* ==========================================================================
    Todo form
    ========================================================================== */
-.todo-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--color-border);
-}
-
+/* 表單欄位（登入表單、新增待辦 modal 共用）。
+   待辦事項一覽上方的常駐新增表單已移除，.todo-form / .field-date 隨之刪除。 */
 .field {
   display: flex;
   flex-direction: column;
   gap: 4px;
   flex: 1 1 220px;
-}
-
-.field-date {
-  flex: 0 1 180px;
 }
 
 .field label {
@@ -992,13 +991,15 @@ input[type="password"]:focus {
   gap: 8px;
 }
 
+/* 一列現在有兩行（標題 + 截止日期），對齊改成置頂：標題換多行時
+   勾選框與 ✕ 要貼齊第一行，不要浮在整列的垂直中線上。 */
 .todo-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 10px 12px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -1016,6 +1017,10 @@ input[type="password"]:focus {
 
 .todo-item.is-completed .todo-title {
   text-decoration: line-through;
+  color: var(--color-completed);
+}
+
+.todo-item.is-completed .todo-due {
   color: var(--color-completed);
 }
 
@@ -1083,15 +1088,71 @@ input[type="password"]:focus {
 }
 
 .todo-title {
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 1.35;
+  /* 標題過長就換行，不去擠壓下面那行日期。 */
   word-break: break-word;
-  /* 隱藏的編輯入口：點文字即可編輯 */
+  /* 編輯入口：點文字就地編輯 */
   cursor: pointer;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
+  /* 讓 hover 底色不會緊貼文字 */
+  padding: 1px 4px;
+  margin: -1px -4px;
 }
 
 .todo-title:hover {
   background: var(--color-bg-subtle);
+}
+
+/* 第二行的截止日期：淡灰、明顯小於標題、獨立一行、唯讀（沒有任何編輯入口）。 */
+.todo-due {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--color-text-muted);
+}
+
+/* 就地編輯的輸入框：外觀盡量貼近原本的標題文字，讓「文字本身變成可編輯」
+   而不是「跳出一個表單」。尺寸與標題對齊，避免進出編輯時整列高度跳動。
+   ⚠️ font-size 至少 16px：小於 16px 會觸發 iOS Safari 聚焦時自動放大畫面。
+   ⚠️ 選擇器一定要帶上 input：上面那組 input[type="text"] 的權重是 (0,1,1)，
+      單寫 .todo-title-input 只有 (0,1,0)，會被它的藥丸圓角、大內距、
+      深色 focus 邊框整組蓋過去，看起來就變成「跳出一個表單」。 */
+input.todo-title-input {
+  width: 100%;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.35;
+  padding: 1px 4px;
+  margin: -1px -4px;
+  border: 1px solid var(--color-nav-active);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  outline: none;
+  box-shadow: none;
+}
+
+/* 同理，:focus 也要壓過 input[type="text"]:focus 的深色邊框與外光暈。 */
+input.todo-title-input:focus {
+  border-color: var(--color-nav-active);
+  box-shadow: 0 0 0 2px var(--color-nav-pill-bg);
+}
+
+/* 編輯中：整列淡淡高亮，並讓被停用的勾選框／✕ 看得出來不能按。 */
+.todo-item.is-editing {
+  border-color: var(--color-nav-active);
+}
+
+.todo-item.is-editing .todo-checkbox input[type="checkbox"]:disabled,
+.todo-archive:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.todo-archive:disabled:hover {
+  background: none;
+  color: var(--color-text-muted);
 }
 
 /* 全部待辦畫面的封存鈕（右側 ✕） */
@@ -1208,23 +1269,6 @@ input[type="password"]:focus {
   font-size: 14px;
   text-align: center;
   padding: 24px 0 4px;
-}
-
-/* Inline edit form */
-.todo-edit-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex: 1;
-  align-items: center;
-}
-
-.todo-edit-form input[type="text"] {
-  flex: 1 1 200px;
-}
-
-.todo-edit-form input[type="date"] {
-  flex: 0 1 160px;
 }
 
 /* ==========================================================================
@@ -1370,15 +1414,15 @@ input[type="password"]:focus {
   flex-direction: row-reverse;
 }
 
+/* Mia 的頭像：<img>，圓形裁切。object-fit: cover 保證非正方形的圖也不會
+   被壓扁，是裁掉多餘的部分。尺寸需與 script.js 的 CHAT_AVATAR_SIZE 一致
+   （那裡用它算 srcset 的 sizes）。 */
 .chat-avatar {
   flex-shrink: 0;
   width: 30px;
   height: 30px;
   border-radius: var(--radius-circle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
+  object-fit: cover;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
 }
@@ -1650,6 +1694,41 @@ input[type="password"]:focus {
   }
 }
 
+/* 對話區底部的「Mia 正在打字」泡泡。
+   沿用 .chat-message.ai 的泡泡外觀與 .chat-row-enter 的進場動畫，
+   只把裡頭的三顆點放大——跟輸入框上方那組窄指示器要明顯區分，
+   兩者是刻意同時顯示的。 */
+.chat-typing-bubble {
+  display: flex;
+  align-items: center;
+  /* 比一般訊息泡泡多一點內距，讓放大的點不會貼邊 */
+  padding: 12px 16px;
+}
+
+.chat-typing-bubble .chat-typing-dots {
+  gap: 6px; /* 窄指示器是 3px */
+}
+
+/* 點放大，跳動幅度也跟著放大才協調（改用 -lg 的 keyframes）。 */
+.chat-typing-bubble .chat-typing-dot {
+  width: 10px; /* 窄指示器是 6px */
+  height: 10px;
+  animation-name: chat-typing-bounce-lg;
+}
+
+@keyframes chat-typing-bounce-lg {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    background: var(--color-completed);
+  }
+  40% {
+    transform: translateY(-6px);
+    background: var(--color-text);
+  }
+}
+
 /* 送出中停用狀態 */
 .chat-form textarea:disabled,
 .btn:disabled {
@@ -1676,7 +1755,8 @@ input[type="password"]:focus {
   line-height: 1.4;
   padding: 8px 10px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
+  /* 圓角矩形而不是藥丸：這個框會長到 5 行高，全圓角在多行時很怪。 */
+  border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-text);
   outline: none;
@@ -1738,15 +1818,9 @@ input[type="password"]:focus {
     right: 14px;
   }
 
-  .todo-form {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   /* ⚠️ 直排時 flex-basis 會從「寬度」變成「高度」，若沿用 flex:1 1 220px，
      欄位會被撐成 220px 高。這裡要重設回自動高度。 */
-  .field,
-  .field-date {
+  .field {
     flex: 0 0 auto;
   }
 
@@ -1872,8 +1946,10 @@ input[type="password"]:focus {
     animation: none;
   }
 
-  /* 輸入中指示器的跳動點：保留顏色變化但停止位移。 */
-  .chat-typing-dot {
+  /* 輸入中指示器的跳動點：保留顏色變化但停止位移。
+     （泡泡內的放大版另外寫一條，否則它較高的選擇器權重會蓋掉這裡。） */
+  .chat-typing-dot,
+  .chat-typing-bubble .chat-typing-dot {
     animation: none;
     background: var(--color-dot-open);
   }
