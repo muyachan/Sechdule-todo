@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>" />
 
 <!-- ============ PWA 設定：manifest + meta 標籤 + 圖示 ============ -->
-<link rel="manifest" href="manifest.json?v=22" />
+<link rel="manifest" href="manifest.json?v=23" />
 <meta name="theme-color" content="#2D2D2D" />
 <!-- iOS Safari 不吃 manifest.json 的 display/name，需要另外用這些 meta 標籤設定
      「加入主畫面」後的全螢幕模式與名稱。 -->
@@ -28,7 +28,7 @@
         請把下方所有的 v=? 一起 +1，使用者的瀏覽器才會抓到最新版，
         而不是舊的快取檔。（sw.js 本身不用加版本參數，它的快取版本
         由 sw.js 檔案內的 CACHE_NAME 常數控制，見該檔案開頭註解。）-->
-<link rel="stylesheet" href="style.css?v=22" />
+<link rel="stylesheet" href="style.css?v=23" />
 </head>
 <body>
   <!-- ============ 啟動畫面（Splash）============
@@ -102,13 +102,6 @@
           <button type="button" id="cal-next" class="icon-btn" aria-label="下一個月">›</button>
         </div>
 
-        <!-- 快速跳轉：年 + 月下拉選單 -->
-        <div id="cal-jump" class="cal-jump" hidden>
-          <select id="cal-jump-year" aria-label="年份"></select>
-          <select id="cal-jump-month" aria-label="月份"></select>
-          <button type="button" id="cal-jump-today" class="btn btn-secondary btn-sm">今天</button>
-        </div>
-
         <div class="cal-weekdays" aria-hidden="true">
           <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
         </div>
@@ -121,17 +114,16 @@
           <ul id="day-list" class="day-list"></ul>
           <p id="day-empty" class="day-empty" hidden>這天沒有待辦事項</p>
 
-          <form id="day-add-form" class="day-add-form">
-            <input
-              type="text"
-              id="day-add-title"
-              placeholder="新增此日待辦..."
-              required
-              maxlength="200"
-              autocomplete="off"
-            />
-            <button type="submit" class="btn btn-primary btn-sm">新增</button>
-          </form>
+          <!-- 常駐輸入欄位已改成「+」，點擊後開啟新增待辦 modal。 -->
+          <button
+            type="button"
+            id="day-add-btn"
+            class="day-add-btn"
+            aria-haspopup="dialog"
+            aria-controls="add-todo-modal"
+            aria-label="新增待辦"
+            title="新增待辦"
+          >＋</button>
         </div>
       </section>
 
@@ -165,6 +157,68 @@
         <ul id="todo-list" class="todo-list"></ul>
         <p id="todo-empty" class="empty-state" hidden>目前沒有待辦事項，新增一筆開始吧！</p>
       </section>
+
+      <!-- ============ 新增待辦 modal（全域元件）============
+           取代原本常駐在當日清單下方的輸入欄位。開啟時日期欄位會自動
+           帶入目前選中的日期（沿用原本的行為）。
+           開關／遮罩／ESC 的慣例與側邊抽屜一致，未使用任何 modal 函式庫。 -->
+      <div id="add-todo-backdrop" class="modal-backdrop"></div>
+      <div
+        id="add-todo-modal"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-todo-heading"
+      >
+        <div class="modal-head">
+          <h2 id="add-todo-heading" class="panel-title">新增待辦</h2>
+          <button type="button" id="add-todo-close" class="icon-btn" aria-label="關閉">✕</button>
+        </div>
+
+        <form id="add-todo-form" class="modal-form">
+          <div class="field">
+            <label for="add-todo-title">事項名稱</label>
+            <input
+              type="text"
+              id="add-todo-title"
+              placeholder="輸入待辦事項..."
+              required
+              maxlength="200"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="add-todo-date">截止日期</label>
+            <input type="date" id="add-todo-date" required />
+          </div>
+          <button type="submit" class="btn btn-primary">新增</button>
+        </form>
+      </div>
+
+      <!-- ============ 年月選擇浮層（全域元件）============
+           取代原本的兩個 <select> 下拉：年份用左右箭頭切換，
+           月份用 3 欄 × 4 列的九宮格排列供點選。 -->
+      <div id="cal-jump-backdrop" class="modal-backdrop"></div>
+      <div
+        id="cal-jump"
+        class="modal cal-jump"
+        role="dialog"
+        aria-modal="true"
+        aria-label="選擇年月"
+      >
+        <div class="modal-head">
+          <div class="cal-jump-year-nav">
+            <button type="button" id="cal-jump-year-prev" class="icon-btn" aria-label="上一年">‹</button>
+            <span id="cal-jump-year-label" class="cal-jump-year-label" aria-live="polite"></span>
+            <button type="button" id="cal-jump-year-next" class="icon-btn" aria-label="下一年">›</button>
+          </div>
+          <button type="button" id="cal-jump-close" class="icon-btn" aria-label="關閉">✕</button>
+        </div>
+
+        <div id="cal-jump-months" class="cal-jump-months" role="group" aria-label="月份"></div>
+
+        <button type="button" id="cal-jump-today" class="btn btn-secondary btn-sm">今天</button>
+      </div>
 
       <!-- ============ 側邊抽屜（全域元件）============
            待辦列表已移到上面的 #todos-view，這裡暫時是空狀態。
@@ -334,8 +388,8 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
-  <script src="config.js?v=22"></script>
-  <script src="script.js?v=22"></script>
+  <script src="config.js?v=23"></script>
+  <script src="script.js?v=23"></script>
 
   <!-- 註冊 Service Worker（見 sw.js）：提供基本的 App Shell 快取，
        讓 PWA 開啟更快、離線時至少能顯示介面外殼。與待辦/聊天等
