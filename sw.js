@@ -24,7 +24,7 @@
 
 // 每次調整下面 APP_SHELL 清單或快取邏輯時，把版本號 +1，
 // 讓使用者的瀏覽器建立新的快取、清掉舊的。
-const CACHE_NAME = "schedule-todo-shell-v11";
+const CACHE_NAME = "schedule-todo-shell-v12";
 
 // 需要跟 index.html 裡的 ?v=N 保持一致，否則快取到的會是舊版檔案。
 const APP_SHELL = [
@@ -50,7 +50,13 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      // cache: "reload" 讓這次抓取略過瀏覽器自己的 HTTP 快取。
+      // 沒有這個的話，像 icons/*.png 這種「檔名不變、內容換掉」的資源，
+      // 即使升了 CACHE_NAME，install 時仍可能從 HTTP 快取撈到舊圖，
+      // 等於白升一版。（?v=N 只掛在 css/js 上，對圖示沒有作用。）
+      .then((cache) =>
+        cache.addAll(APP_SHELL.map((url) => new Request(url, { cache: "reload" })))
+      )
       .then(() => self.skipWaiting())
   );
 });
