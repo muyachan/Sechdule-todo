@@ -28,8 +28,11 @@
   --color-outside-month: #bdbdbd;
 
   /* 底部導航列：選取／未選取色（變數化，之後做夜間模式只要換這裡） */
-  --color-nav-active: #7fb0d8;
+  --color-nav-active: #8cc5de; /* 強調色定案 */
   --color-nav-inactive: #9a9a9a;
+  /* 選取狀態的藥丸底：淺藍底 + 深藍圖示，確保對比 */
+  --color-nav-pill-bg: #e6f1fb;
+  --color-nav-pill-fg: #2f7ba6;
 
   /* 底部導航列高度；加上 iOS 安全區後的總高度，供浮動元件避讓用。 */
   --bottom-nav-height: 56px;
@@ -56,9 +59,21 @@
   --color-overdue: #d97757;
   --color-completed: #c4c4c4;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
+  /* ---- 圓角 ----
+     整體往圓潤、可愛的方向。所有 border-radius 一律引用這組變數，
+     不要在規則裡寫死數值。 */
+  --radius-pill: 999px; /* 藥丸形：待辦列、按鈕、輸入框、標籤 */
+  --radius-card: 20px; /* 卡片：抽屜、modal、聊天視窗、底部導航列 */
+  --radius-cell: 14px; /* 月曆日期格（圓角方塊，不是正圓） */
+  --radius-control: 999px; /* 小控制項：圖示鈕、勾選框容器 */
+  --radius-circle: 50%; /* 正圓：勾選框、X 鈕底、今天標記、頭像 */
+
+  /* ---- 動態 ----
+     時長集中在 150–250ms，曲線統一用專案既有的回彈曲線。 */
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-slow: 250ms;
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.06), 0 14px 32px rgba(0, 0, 0, 0.1);
   --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.08), 0 6px 14px rgba(0, 0, 0, 0.05);
@@ -179,7 +194,7 @@ body {
 .splash-icon {
   width: 96px;
   height: 96px;
-  border-radius: 22px;
+  border-radius: var(--radius-card);
 }
 
 .splash-name {
@@ -220,7 +235,7 @@ body {
   font-weight: 600;
   color: var(--color-text);
   padding: 6px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   cursor: pointer;
   min-width: 150px;
 }
@@ -239,9 +254,10 @@ body {
   line-height: 1;
   color: var(--color-text-muted);
   padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-bounce);
 }
 
 .icon-btn:hover {
@@ -261,7 +277,7 @@ body {
   background: rgba(0, 0, 0, 0.35);
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
+  transition: opacity var(--dur-base) ease, visibility var(--dur-base) ease;
 }
 
 .modal-backdrop.is-open {
@@ -280,13 +296,13 @@ body {
   padding: 20px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
   opacity: 0;
   visibility: hidden;
   transform: translate(-50%, -50%) scale(0.94);
-  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
-    visibility 0.2s;
+  transition: opacity var(--dur-base) ease,
+    transform var(--dur-base) var(--ease-bounce), visibility var(--dur-base);
 }
 
 .modal.is-open {
@@ -343,13 +359,14 @@ body {
   appearance: none;
   background: none;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-cell);
   padding: 12px 0;
   font: inherit;
   font-size: 15px;
   color: var(--color-text);
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-bounce);
 }
 
 .cal-jump-month:hover {
@@ -404,7 +421,7 @@ body {
   justify-content: flex-start;
   gap: 4px;
   padding: 6px 0 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-cell);
 }
 
 .cal-cell:hover {
@@ -418,7 +435,7 @@ body {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   font-size: 17px;
   line-height: 1;
   color: var(--color-text);
@@ -460,7 +477,7 @@ body {
 .cal-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--color-dot-open);
 }
 
@@ -491,21 +508,18 @@ body {
 }
 
 /* 一行一項、細分隔線、右側刪除按鈕 */
+/* 當日清單的每一列同樣做成藥丸形（與全部待辦畫面一致）。 */
 .day-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 2px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.day-check {
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  flex-shrink: 0;
-  cursor: pointer;
-  accent-color: var(--color-accent);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-bounce);
 }
 
 /* 當日清單的中間欄：標題 +（倒數時）撤銷列 */
@@ -536,7 +550,7 @@ body {
   line-height: 1;
   color: var(--color-text-muted);
   padding: 6px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-circle);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -557,7 +571,7 @@ body {
   appearance: none;
   background: none;
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   margin-top: 12px;
   width: 100%;
   padding: 10px 0;
@@ -566,8 +580,8 @@ body {
   line-height: 1;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease,
-    border-color 0.15s ease;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
 }
 
 .day-add-btn:hover {
@@ -586,7 +600,7 @@ body {
   background: rgba(0, 0, 0, 0.35);
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  transition: opacity var(--dur-slow) ease, visibility var(--dur-slow) ease;
 }
 
 .drawer-backdrop.is-open {
@@ -605,10 +619,14 @@ body {
   overflow-y: auto;
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
+  /* 只圓左側兩角：右側是貼著螢幕邊緣的，圓角會看不到，
+     反而讓面板看起來像沒對齊。 */
+  border-radius: var(--radius-card) 0 0 var(--radius-card);
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
   transform: translateX(100%);
   visibility: hidden;
-  transition: transform 0.28s ease, visibility 0.28s ease;
+  transition: transform var(--dur-slow) var(--ease-bounce),
+    visibility var(--dur-slow) ease;
 }
 
 .todo-drawer.is-open {
@@ -680,6 +698,8 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
+  /* 同上：底部兩角貼著螢幕邊緣，只圓上面兩角。 */
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 
 .bottom-nav-btn {
@@ -696,21 +716,45 @@ body {
   cursor: pointer;
   color: var(--color-nav-inactive);
   -webkit-tap-highlight-color: transparent;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition: color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-bounce);
 }
 
-/* 前三格的選取狀態 */
+/* 選取狀態的淺藍藥丸底：用 ::before 畫在圖示後方。
+   平時縮小且透明，選取時放大到 1 並淡入，切換才不會瞬間跳出來。 */
+.bottom-nav-btn::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--color-nav-pill-bg);
+  transform: translate(-50%, -50%) scale(0.6);
+  opacity: 0;
+  transition: opacity var(--dur-base) ease,
+    transform var(--dur-base) var(--ease-bounce);
+}
+
+/* 前三格的選取狀態：藥丸底淡入 + 圖示換成深藍以確保對比 */
+.bottom-nav-btn.is-active::before {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 .bottom-nav-btn.is-active {
-  color: var(--color-nav-active);
+  color: var(--color-nav-pill-fg);
 }
 
-/* 按下時的即時回饋（後兩格是動作，沒有選取狀態，只靠這個） */
+/* 按下時輕微縮小，放開回彈（後兩格沒有選取狀態，只靠這個回饋） */
 .bottom-nav-btn:active {
-  background: var(--color-bg-subtle);
+  transform: scale(0.9);
 }
 
 .bottom-nav-btn svg {
   display: block;
+  position: relative; /* 疊在藥丸底之上 */
 }
 
 /* 切換區與動作區之間的細分隔線：畫在第 4 格左緣，
@@ -736,14 +780,14 @@ body {
   z-index: 95;
   transform: translate(-50%, 8px);
   padding: 8px 16px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-text);
   color: var(--color-surface);
   font-size: 13px;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--dur-base) ease, transform var(--dur-base) ease;
 }
 
 .toast.is-visible {
@@ -757,7 +801,7 @@ body {
 .panel {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
   padding: 20px 24px 24px;
 }
@@ -853,11 +897,11 @@ input[type="password"] {
   font-size: 16px;
   padding: 8px 10px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-text);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 input[type="text"]:focus,
@@ -873,11 +917,11 @@ input[type="password"]:focus {
   font-size: 14px;
   font-weight: 500;
   padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease,
-    transform 0.05s ease, box-shadow 0.15s ease;
+  transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease,
+    transform var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
   white-space: nowrap;
 }
 
@@ -954,7 +998,7 @@ input[type="password"]:focus {
   gap: 12px;
   padding: 10px 12px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -986,12 +1030,48 @@ input[type="password"]:focus {
   cursor: pointer;
 }
 
-.todo-checkbox input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
+/* 勾選框：由方形改為正圓（自繪，原生 checkbox 無法做成圓形）。 */
+.todo-checkbox input[type="checkbox"],
+.day-check {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 22px;
+  height: 22px;
   margin: 0;
+  flex-shrink: 0;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-circle);
+  background: var(--color-surface);
   cursor: pointer;
-  accent-color: var(--color-accent);
+  transition: background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-bounce);
+}
+
+.todo-checkbox input[type="checkbox"]:hover,
+.day-check:hover {
+  border-color: var(--color-nav-active);
+}
+
+.todo-checkbox input[type="checkbox"]:checked,
+.day-check:checked {
+  background: var(--color-nav-pill-fg);
+  border-color: var(--color-nav-pill-fg);
+}
+
+/* 打勾符號（用兩條邊框轉 45 度畫成 ✓） */
+.todo-checkbox input[type="checkbox"]:checked::after,
+.day-check:checked::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .todo-main {
@@ -1007,7 +1087,7 @@ input[type="password"]:focus {
   word-break: break-word;
   /* 隱藏的編輯入口：點文字即可編輯 */
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
 }
 
 .todo-title:hover {
@@ -1024,9 +1104,10 @@ input[type="password"]:focus {
   line-height: 1;
   color: var(--color-text-muted);
   padding: 6px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-circle);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-bounce);
 }
 
 .todo-archive:hover {
@@ -1041,7 +1122,7 @@ input[type="password"]:focus {
 /* 打勾的短促回饋（約 150ms）：勾選框輕微放大再回位。 */
 .todo-item.is-completed .todo-checkbox input[type="checkbox"],
 .day-item.is-completed .day-check {
-  animation: check-pop 150ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: check-pop var(--dur-fast) var(--ease-bounce);
 }
 
 @keyframes check-pop {
@@ -1085,7 +1166,7 @@ input[type="password"]:focus {
    max-height 給一個足夠大的起始值，才能對 auto 高度做收合過渡。 */
 .todo-item.is-archiving,
 .day-item.is-archiving {
-  animation: row-collapse 250ms ease forwards;
+  animation: row-collapse var(--dur-slow) ease forwards;
   overflow: hidden;
   pointer-events: none;
 }
@@ -1158,7 +1239,7 @@ input[type="password"]:focus {
   width: var(--fab-size);
   height: var(--fab-size);
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--color-accent);
   color: #fff;
   font-size: 24px;
@@ -1168,7 +1249,7 @@ input[type="password"]:focus {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  transition: background-color 0.15s ease, transform 0.1s ease;
+  transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease;
   /* 載入完成時輕微縮放 + 淡入出現 */
   animation: fab-pop-in 0.32s ease-out both;
 }
@@ -1238,7 +1319,7 @@ input[type="password"]:focus {
   padding: 16px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
 }
 
@@ -1247,8 +1328,8 @@ input[type="password"]:focus {
   visibility: visible;
   transform: scale(1) rotate(0deg);
   /* 展開時：彈性曲線輕微過衝再回彈到定位 */
-  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
-    opacity 0.2s ease, visibility 0s;
+  transition: transform var(--dur-slow) var(--ease-bounce),
+    opacity var(--dur-base) ease, visibility 0s;
 }
 
 /* 聊天視窗內：標頭固定、訊息區佔滿並捲動、輸入框固定在底部。 */
@@ -1270,7 +1351,7 @@ input[type="password"]:focus {
   padding: 12px;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-card);
   margin-bottom: 12px;
 }
 
@@ -1293,7 +1374,7 @@ input[type="password"]:focus {
   flex-shrink: 0;
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1306,7 +1387,7 @@ input[type="password"]:focus {
   position: relative;
   min-width: 0;
   padding: 8px 12px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   font-size: 14px;
   line-height: 1.4;
   word-break: break-word;
@@ -1343,14 +1424,15 @@ input[type="password"]:focus {
   appearance: none;
   background: none;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   font: inherit;
   font-size: 11px;
   line-height: 1.6;
   color: var(--color-text-muted);
   padding: 0 8px;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-bounce);
 }
 .chat-copy-btn:hover {
   background: var(--color-bg-subtle);
@@ -1367,7 +1449,7 @@ input[type="password"]:focus {
   color: var(--color-accent);
   background: var(--color-accent-soft);
   border: 1px solid var(--color-accent-soft-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 /* ==========================================================================
@@ -1427,7 +1509,7 @@ input[type="password"]:focus {
   font-size: 12.5px;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-cell);
   padding: 1px 4px;
 }
 .chat-markdown pre {
@@ -1435,7 +1517,7 @@ input[type="password"]:focus {
   padding: 10px 12px;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-cell);
   overflow-x: auto;
 }
 .chat-markdown pre code {
@@ -1496,7 +1578,7 @@ input[type="password"]:focus {
    加這個 class），比聊天視窗開合的彈性動畫更輕更快，避免訊息一多
    看起來拖沓。 */
 .chat-row-enter {
-  animation: chat-row-pop-in 190ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: chat-row-pop-in var(--dur-base) var(--ease-bounce) both;
 }
 
 @keyframes chat-row-pop-in {
@@ -1539,7 +1621,7 @@ input[type="password"]:focus {
 .chat-typing-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--color-completed); /* 未輪到：淺灰 */
   animation: chat-typing-bounce 1.2s ease-in-out infinite;
 }
@@ -1594,7 +1676,7 @@ input[type="password"]:focus {
   line-height: 1.4;
   padding: 8px 10px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-text);
   outline: none;
@@ -1602,7 +1684,7 @@ input[type="password"]:focus {
   min-height: 40px; /* 約 1 行 + padding */
   max-height: 130px; /* 約 5 行，超過改內部捲動 */
   overflow-y: auto;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 #chat-input:focus {
@@ -1690,5 +1772,109 @@ input[type="password"]:focus {
 
   .chat-row {
     max-width: 92%;
+  }
+}
+
+/* ==========================================================================
+   互動回饋與換月動畫（統一手感）
+   --------------------------------------------------------------------------
+   時長／曲線一律用 --dur-* 與 --ease-bounce，不要各處各寫一套。
+   ========================================================================== */
+
+/* 按下時輕微縮小、放開回彈：所有可點元素共用同一組手感。 */
+.btn:active,
+.cal-cell:active,
+.cal-jump-month:active,
+.todo-item:active,
+.day-item:active,
+.day-add-btn:active,
+.icon-btn:active,
+.todo-archive:active,
+.day-delete:active,
+.chat-copy-btn:active {
+  transform: scale(0.96);
+}
+
+/* 待辦列本身可點（點文字進編輯），press 手感需要有 transition 才會回彈。 */
+.todo-item {
+  transition: transform var(--dur-fast) var(--ease-bounce);
+}
+
+.cal-cell,
+.cal-jump-month,
+.day-add-btn,
+.todo-archive,
+.day-delete,
+.chat-copy-btn {
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-bounce);
+}
+
+/* 換月／換年：整片日期格淡入 + 輕微上移，不要瞬間換掉。
+   由 script.js 在重畫月曆後加上這個 class（動畫結束自動移除）。 */
+.cal-grid.is-switching {
+  animation: cal-grid-in var(--dur-slow) var(--ease-bounce);
+}
+
+@keyframes cal-grid-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================================================
+   降低動態偏好 (prefers-reduced-motion)
+   --------------------------------------------------------------------------
+   使用者在系統開啟「減少動態效果」時，關閉／大幅簡化所有動畫與過渡，
+   只保留必要的顯示切換，避免造成不適。
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* 按下縮小、換月位移這類純裝飾的位移一律取消。 */
+  .btn:active,
+  .cal-cell:active,
+  .cal-jump-month:active,
+  .todo-item:active,
+  .day-item:active,
+  .day-add-btn:active,
+  .icon-btn:active,
+  .todo-archive:active,
+  .day-delete:active,
+  .chat-copy-btn:active,
+  .bottom-nav-btn:active {
+    transform: none;
+  }
+
+  .cal-grid.is-switching {
+    animation: none;
+  }
+
+  /* 浮動按鈕的彈入、聊天訊息彈入等入場動畫直接省略。 */
+  .chat-fab {
+    animation: none;
+  }
+
+  .chat-row-enter {
+    animation: none;
+  }
+
+  /* 輸入中指示器的跳動點：保留顏色變化但停止位移。 */
+  .chat-typing-dot {
+    animation: none;
+    background: var(--color-dot-open);
   }
 }

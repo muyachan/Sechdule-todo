@@ -327,6 +327,16 @@ function buildCalendarCells(year, month) {
   return cells;
 }
 
+/**
+ * 換月／換年時讓整片日期格淡入（動畫本身在 CSS 的 .is-switching）。
+ * 先移除再強制 reflow 才重新加上，連續點上/下個月時動畫才會重播。
+ */
+function playCalGridSwitch() {
+  calGridEl.classList.remove("is-switching");
+  void calGridEl.offsetWidth;
+  calGridEl.classList.add("is-switching");
+}
+
 function renderCalendar() {
   calTitleEl.textContent = `${calYear}年${calMonth + 1}月`;
 
@@ -437,6 +447,7 @@ function changeMonth(delta) {
   calYear = d.getFullYear();
   calMonth = d.getMonth();
   renderCalendar();
+  playCalGridSwitch();
 }
 
 calPrevEl.addEventListener("click", () => changeMonth(-1));
@@ -491,6 +502,7 @@ function renderCalJump() {
       calMonth = m;
       closeCalJump(); // 選定後自動關閉
       renderCalendar();
+      playCalGridSwitch();
     });
     calJumpMonthsEl.appendChild(btn);
   }
@@ -517,6 +529,7 @@ calJumpTodayEl.addEventListener("click", () => {
   selectedDateKey = todayKey();
   closeCalJump();
   renderCalendar();
+  playCalGridSwitch();
   renderDaySection();
 });
 
