@@ -41,6 +41,15 @@
   --fab-size: 56px;
   --fab-offset: 16px;
 
+  /* 聊天視窗下緣的錨點：底部導航列 + 浮動按鈕 + 間距。 */
+  --chat-panel-bottom: calc(
+    var(--bottom-nav-total) + var(--fab-offset) + var(--fab-size) + 12px
+  );
+  /* 聊天視窗上方要留的邊界，避免頂到畫面最上緣。 */
+  --chat-panel-top-gap: 24px;
+  /* iOS 鍵盤高度：由 script.js 依 visualViewport 即時更新。 */
+  --keyboard-inset: 0px;
+
   /* 語意色（維持警示辨識度，不隨版面改成灰階：過期/刪除仍需要明顯區分） */
   --color-danger: #c1483d;
   --color-danger-hover: #a83c32;
@@ -403,8 +412,16 @@ body {
   accent-color: var(--color-accent);
 }
 
-.day-item-title {
+/* 當日清單的中間欄：標題 +（倒數時）撤銷列 */
+.day-item-main {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-item-title {
   min-width: 0;
   font-size: 15px;
   word-break: break-word;
@@ -878,6 +895,107 @@ input[type="password"]:focus {
 .todo-title {
   font-size: 14px;
   word-break: break-word;
+  /* 隱藏的編輯入口：點文字即可編輯 */
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.todo-title:hover {
+  background: var(--color-bg-subtle);
+}
+
+/* 全部待辦畫面的封存鈕（右側 ✕） */
+.todo-archive {
+  appearance: none;
+  background: none;
+  border: none;
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.todo-archive:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-danger);
+}
+
+/* ==========================================================================
+   勾選後的封存流程：打勾回饋、撤銷列、消失動畫
+   ========================================================================== */
+
+/* 打勾的短促回饋（約 150ms）：勾選框輕微放大再回位。 */
+.todo-item.is-completed .todo-checkbox input[type="checkbox"],
+.day-item.is-completed .day-check {
+  animation: check-pop 150ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes check-pop {
+  0% {
+    transform: scale(1);
+  }
+  55% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 倒數 3 秒期間顯示的「已完成 · 撤銷」 */
+.undo-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.undo-sep {
+  opacity: 0.6;
+}
+
+.undo-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-nav-active);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* 消失動畫（約 250ms）：高度收合 + 淡出，下方項目平順遞補、不跳位。
+   max-height 給一個足夠大的起始值，才能對 auto 高度做收合過渡。 */
+.todo-item.is-archiving,
+.day-item.is-archiving {
+  animation: row-collapse 250ms ease forwards;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@keyframes row-collapse {
+  0% {
+    opacity: 1;
+    max-height: 200px;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-width: 0;
+    transform: translateX(8px);
+  }
 }
 
 .todo-meta {
@@ -981,26 +1099,31 @@ input[type="password"]:focus {
   flex-direction: column;
   opacity: 0;
   visibility: hidden;
-  /* 收起時：縮小＋微旋轉，像是被吸回按鈕裡 */
-  transform: scale(0.15) rotate(-8deg);
+  /* 收起時：縮小＋微旋轉，像是被吸回按鈕裡。
+     視窗放大到 75dvh 後，原本 scale(0.15) 的起始值過於誇張，
+     改為 0.85（旋轉角度也一併收斂），曲線／時長／transform-origin 不變。 */
+  transform: scale(0.85) rotate(-2deg);
   transform-origin: bottom right;
   transition: transform 0.26s cubic-bezier(0.55, 0, 0.85, 0.35),
     opacity 0.18s ease, visibility 0.26s;
   position: fixed;
   right: 20px;
-  /* 跟著浮動按鈕一起上移到底部導航列上方（按鈕頂端再加 12px 間距）。
-     transform / transform-origin / 動畫曲線維持原樣不動。 */
-  bottom: calc(
-    var(--bottom-nav-total) + var(--fab-offset) + var(--fab-size) + 12px
-  );
+  /* 下緣錨定在底部導航列上方；鍵盤彈出時再往上讓開鍵盤高度。 */
+  bottom: calc(var(--chat-panel-bottom) + var(--keyboard-inset));
   z-index: 55;
   width: 380px;
-  max-height: min(
-    560px,
-    calc(
-      100dvh - var(--bottom-nav-total) - var(--fab-offset) - var(--fab-size) -
-        52px
-    )
+  /* 高度拉到視窗的 75%。用 dvh 而非 vh：iOS Safari 的 vh 會把網址列算進去，
+     實際會超出畫面。舊瀏覽器讀不懂 dvh 時退回上面那行 vh。 */
+  height: 75vh;
+  height: 75dvh;
+  /* 上方保留邊界，且鍵盤彈出時高度跟著縮（訊息區壓縮，而不是整個視窗被推出畫面）。 */
+  max-height: calc(
+    100vh - var(--chat-panel-bottom) - var(--keyboard-inset) -
+      var(--chat-panel-top-gap)
+  );
+  max-height: calc(
+    100dvh - var(--chat-panel-bottom) - var(--keyboard-inset) -
+      var(--chat-panel-top-gap)
   );
   padding: 16px;
   background: var(--color-surface);
@@ -1417,10 +1540,6 @@ input[type="password"]:focus {
     left: 10px;
     width: auto;
     padding: 12px;
-    max-height: calc(
-      100dvh - var(--bottom-nav-total) - var(--fab-offset) - var(--fab-size) -
-        34px
-    );
   }
 
   .chat-fab {

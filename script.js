@@ -213,6 +213,7 @@ function mapRowToTodo(row) {
     title: row.title,
     dueDate: row.due_date,
     completedAt: row.completed_at,
+    archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -380,7 +381,10 @@ function renderDaySection() {
   list.forEach((todo) => {
     const li = document.createElement("li");
     li.className = "day-item";
-    if (todo.completedAt) li.classList.add("is-completed");
+    // 與全部待辦畫面一致：倒數封存中維持完成樣式。
+    if (todo.completedAt || isPendingArchive(todo.id)) {
+      li.classList.add("is-completed");
+    }
     li.dataset.id = todo.id;
 
     const checkbox = document.createElement("input");
@@ -391,22 +395,29 @@ function renderDaySection() {
       "aria-label",
       `${todo.completedAt ? "取消完成" : "標記完成"}：${todo.title}`
     );
-    checkbox.addEventListener("change", () => toggleTodoCompleted(todo.id));
+    // 與全部待辦畫面共用同一套勾選→倒數→封存邏輯。
+    checkbox.addEventListener("change", (e) =>
+      handleToggleComplete(todo.id, e.target.checked)
+    );
+
+    const main = document.createElement("div");
+    main.className = "day-item-main";
 
     const title = document.createElement("span");
     title.className = "day-item-title";
     title.textContent = todo.title;
+    main.appendChild(title);
+    if (isPendingArchive(todo.id)) main.appendChild(buildUndoBar(todo.id));
 
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "day-delete";
-    del.textContent = "✕";
-    del.setAttribute("aria-label", `刪除：${todo.title}`);
-    del.addEventListener("click", () => {
-      if (confirm(`確定要刪除「${todo.title}」嗎？`)) deleteTodo(todo.id);
-    });
+    const archiveBtn = document.createElement("button");
+    archiveBtn.type = "button";
+    archiveBtn.className = "day-delete";
+    archiveBtn.textContent = "✕";
+    archiveBtn.setAttribute("aria-label", `封存：${todo.title}`);
+    archiveBtn.title = "封存";
+    archiveBtn.addEventListener("click", () => archiveTodo(todo.id));
 
-    li.append(checkbox, title, del);
+    li.append(checkbox, main, archiveBtn);
     dayListEl.appendChild(li);
   });
 }
@@ -487,14 +498,25 @@ dayAddFormEl.addEventListener("submit", (e) => {
  * 這樣做最單純可靠）。
  * ========================================================================== */
 
-async function fetchTodos() {
+/**
+ * 讀取待辦事項。
+ *
+ * 這是全app唯一的 todos 讀取點，`archived_at is null` 的過濾條件只寫在這裡，
+ * 月曆圓點／當日清單／全部待辦畫面三處都吃同一份 todos 陣列，
+ * 不需要（也不應該）各自再加條件。
+ *
+ * @param {{skipBackfill?: boolean}} [options]
+ */
+async function fetchTodos(options = {}) {
   if (!currentUser) return;
   todoLoadingEl.hidden = false;
   const { data, error } = await supabaseClient
     .from("todos")
     .select("*")
     // RLS 已限制只會回傳自己的資料，這裡再明確過濾一次，語意更清楚。
-    .eq("user_id", currentUser.id);
+    .eq("user_id", currentUser.id)
+    // 已封存的項目不再顯示（資料仍保留在資料庫中）。
+    .is("archived_at", null);
   todoLoadingEl.hidden = true;
 
   if (error) {
@@ -503,7 +525,50 @@ async function fetchTodos() {
     return;
   }
   todos = (data || []).map(mapRowToTodo);
+
+  if (!options.skipBackfill) {
+    const backfilled = await backfillOrphanCompleted();
+    // 有補寫的話資料已變動，重新抓一次；帶 skipBackfill 避免無限遞迴
+    //（補寫後那些列的 archived_at 已非 null，下一次查詢就不會再回傳它們）。
+    if (backfilled) {
+      await fetchTodos({ skipBackfill: true });
+      return;
+    }
+  }
+
   renderTodos();
+}
+
+/**
+ * 補寫「已完成但沒有 archived_at」的孤兒項目。
+ *
+ * 會出現這種狀態的情境：
+ *   - 上次勾選後 3 秒封存計時還沒到就關掉 App。
+ *   - AI 助理（Edge Function）直接把項目標記完成，沒有經過前端的封存流程。
+ * 這類項目載入時直接補寫 archived_at、不播動畫。
+ *
+ * 正在倒數中的項目會被排除，否則重新整理前的暫存狀態會被誤判成孤兒。
+ *
+ * @returns {Promise<boolean>} 是否有補寫任何資料
+ */
+async function backfillOrphanCompleted() {
+  const orphanIds = todos
+    .filter(
+      (t) => t.completedAt && !t.archivedAt && !pendingArchive.has(t.id)
+    )
+    .map((t) => t.id);
+  if (orphanIds.length === 0) return false;
+
+  const now = new Date().toISOString();
+  const { error } = await supabaseClient
+    .from("todos")
+    .update({ archived_at: now, updated_at: now })
+    .in("id", orphanIds);
+  if (error) {
+    console.error("補寫封存時間失敗：", error);
+    return false;
+  }
+  return true;
 }
 
 async function addTodo(title, dueDate) {
@@ -547,22 +612,126 @@ async function updateTodo(id, changes) {
   await fetchTodos();
 }
 
-async function toggleTodoCompleted(id) {
-  const todo = todos.find((t) => t.id === id);
-  if (!todo) return;
-  await updateTodo(id, {
-    completedAt: todo.completedAt ? null : new Date().toISOString(),
-  });
-}
-
-async function deleteTodo(id) {
-  const { error } = await supabaseClient.from("todos").delete().eq("id", id);
+/**
+ * 封存待辦事項（寫入 archived_at）。
+ * 取代原本的 DELETE：資料一律保留在資料庫，只是不再被前端查詢到。
+ */
+async function archiveTodo(id) {
+  const now = new Date().toISOString();
+  const { error } = await supabaseClient
+    .from("todos")
+    .update({ archived_at: now, updated_at: now })
+    .eq("id", id);
   if (error) {
-    console.error("刪除待辦事項失敗：", error);
-    alert(`刪除待辦事項失敗：${error.message}`);
+    console.error("封存待辦事項失敗：", error);
+    alert(`封存待辦事項失敗：${error.message}`);
     return;
   }
   await fetchTodos();
+}
+
+/* ==========================================================================
+ * 勾選 → 3 秒後自動封存（含撤銷）
+ * --------------------------------------------------------------------------
+ * 流程：勾選 → 立刻寫入完成狀態 → 該列套用完成樣式 → 3 秒後寫入 archived_at
+ *       → 播消失動畫 → 移除該列。這 3 秒內該列顯示「已完成 · 撤銷」。
+ *
+ * 關鍵：倒數狀態存在這個 Map（DOM 之外），不存在列元素上。
+ * renderTodos() 會整份重畫列表，若狀態放在 DOM 上就會隨重畫消失、
+ * 計時也可能被重設；放在 Map 裡，重畫時只要查 Map 就能把該列還原成
+ * 「已完成＋撤銷」的樣子，計時器本身完全不受重畫影響。
+ *
+ * 月曆下方的當日清單與全部待辦畫面共用這一套邏輯（見 handleToggleComplete）。
+ * ========================================================================== */
+
+/** 封存倒數秒數。 */
+const ARCHIVE_DELAY_MS = 3000;
+/** 消失動畫時間，需與 style.css 的 .is-archiving 動畫長度一致。 */
+const ARCHIVE_ANIM_MS = 250;
+
+/** @type {Map<string, {timerId:number}>} 正在倒數封存的項目 id → 計時器 */
+const pendingArchive = new Map();
+
+/** 該項目是否正在封存倒數中。 */
+function isPendingArchive(id) {
+  return pendingArchive.has(id);
+}
+
+/** 開始倒數：3 秒後播消失動畫並寫入 archived_at。 */
+function startArchiveCountdown(id) {
+  cancelArchiveCountdown(id); // 保險：不要重複計時
+
+  const timerId = setTimeout(async () => {
+    // 先播消失動畫（可能同時存在於兩個清單，兩邊都要播）。
+    document
+      .querySelectorAll(`[data-id="${CSS.escape(id)}"]`)
+      .forEach((el) => el.classList.add("is-archiving"));
+
+    setTimeout(async () => {
+      pendingArchive.delete(id);
+      await archiveTodo(id); // 內含 fetchTodos()，列會自然從資料中消失
+    }, ARCHIVE_ANIM_MS);
+  }, ARCHIVE_DELAY_MS);
+
+  pendingArchive.set(id, { timerId });
+}
+
+/** 取消倒數（撤銷、或取消勾選時）。 */
+function cancelArchiveCountdown(id) {
+  const pending = pendingArchive.get(id);
+  if (!pending) return;
+  clearTimeout(pending.timerId);
+  pendingArchive.delete(id);
+}
+
+/**
+ * 勾選框變動的共用處理：全部待辦畫面與當日清單都走這裡。
+ * @param {string} id
+ * @param {boolean} checked
+ */
+async function handleToggleComplete(id, checked) {
+  if (checked) {
+    // 先登記倒數，再送出更新：更新完成後會觸發 renderTodos()，
+    // 那時必須已經查得到這筆倒數狀態，該列才會畫成「已完成＋撤銷」。
+    startArchiveCountdown(id);
+    await updateTodo(id, { completedAt: new Date().toISOString() });
+  } else {
+    cancelArchiveCountdown(id);
+    await updateTodo(id, { completedAt: null });
+  }
+}
+
+/** 撤銷：取消倒數並還原成未完成。 */
+async function undoComplete(id) {
+  cancelArchiveCountdown(id);
+  await updateTodo(id, { completedAt: null });
+}
+
+/** 建立「已完成 · 撤銷」小列（倒數中顯示）。 */
+function buildUndoBar(id) {
+  const bar = document.createElement("div");
+  bar.className = "undo-bar";
+
+  const label = document.createElement("span");
+  label.className = "undo-label";
+  label.textContent = "已完成";
+
+  const sep = document.createElement("span");
+  sep.className = "undo-sep";
+  sep.textContent = "·";
+  sep.setAttribute("aria-hidden", "true");
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "undo-btn";
+  btn.textContent = "撤銷";
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    undoComplete(id);
+  });
+
+  bar.append(label, sep, btn);
+  return bar;
 }
 
 /* ==========================================================================
@@ -571,7 +740,7 @@ async function deleteTodo(id) {
 
 /**
  * 待辦資料變動後的統一重畫入口。
- * 所有 CRUD（fetchTodos / addTodo / updateTodo / deleteTodo）都呼叫這個函式，
+ * 所有 CRUD（fetchTodos / addTodo / updateTodo / archiveTodo）都呼叫這個函式，
  * 由它扇出去更新三個會顯示待辦的畫面，確保彼此同步。
  */
 function renderTodos() {
@@ -593,7 +762,8 @@ function renderTodoList() {
   sorted.forEach((todo) => {
     const li = document.createElement("li");
     li.className = "todo-item";
-    if (todo.completedAt) {
+    // 倒數封存中的項目一律維持完成樣式，避免重畫時閃回未完成的樣子。
+    if (todo.completedAt || isPendingArchive(todo.id)) {
       li.classList.add("is-completed");
     } else if (isOverdue(todo.dueDate)) {
       li.classList.add("is-overdue");
@@ -610,8 +780,14 @@ function renderTodoList() {
   });
 }
 
+/**
+ * 全部待辦畫面的一列：只有「勾選框 ｜ 文字 ｜ ✕」。
+ * 編輯功能保留成隱藏入口——點文字即可進入編輯。
+ * ✕ 是封存（archived_at），不是刪除。
+ */
 function buildDisplayRow(todo) {
   const wrapper = document.createDocumentFragment();
+  const pending = isPendingArchive(todo.id);
 
   const checkboxLabel = document.createElement("label");
   checkboxLabel.className = "todo-checkbox";
@@ -623,8 +799,8 @@ function buildDisplayRow(todo) {
     "aria-label",
     `${todo.completedAt ? "取消完成" : "標記完成"}：${todo.title}`
   );
-  checkbox.addEventListener("change", () => {
-    toggleTodoCompleted(todo.id);
+  checkbox.addEventListener("change", (e) => {
+    handleToggleComplete(todo.id, e.target.checked);
   });
   checkboxLabel.appendChild(checkbox);
 
@@ -634,56 +810,38 @@ function buildDisplayRow(todo) {
   const titleEl = document.createElement("div");
   titleEl.className = "todo-title";
   titleEl.textContent = todo.title;
-
-  const meta = document.createElement("div");
-  meta.className = "todo-meta";
-
-  const due = document.createElement("span");
-  due.className = "todo-due";
-  due.textContent = `截止：${formatDate(todo.dueDate)}${
-    !todo.completedAt && isOverdue(todo.dueDate) ? "（已過期）" : ""
-  }`;
-
-  const created = document.createElement("span");
-  created.textContent = `建立：${formatDateTime(todo.createdAt)}`;
-
-  meta.append(due, created);
-
-  if (todo.completedAt) {
-    const completed = document.createElement("span");
-    completed.textContent = `完成：${formatDateTime(todo.completedAt)}`;
-    meta.appendChild(completed);
-  }
-
-  main.append(titleEl, meta);
-
-  const actions = document.createElement("div");
-  actions.className = "todo-actions";
-
-  const editBtn = document.createElement("button");
-  editBtn.type = "button";
-  editBtn.className = "btn btn-secondary btn-sm";
-  editBtn.textContent = "編輯";
-  editBtn.addEventListener("click", () => {
+  // 隱藏的編輯入口：點文字進入編輯（原本的編輯按鈕已移除）。
+  titleEl.setAttribute("role", "button");
+  titleEl.setAttribute("tabindex", "0");
+  titleEl.title = "點擊編輯";
+  const openEditor = () => {
+    if (isPendingArchive(todo.id)) return; // 倒數中不進編輯，避免狀態打架
     editingId = todo.id;
     renderTodos();
-  });
-
-  const deleteBtn = document.createElement("button");
-  deleteBtn.type = "button";
-  deleteBtn.className = "btn btn-danger btn-sm";
-  deleteBtn.textContent = "刪除";
-  deleteBtn.addEventListener("click", () => {
-    if (confirm(`確定要刪除「${todo.title}」嗎？`)) {
-      deleteTodo(todo.id);
+  };
+  titleEl.addEventListener("click", openEditor);
+  titleEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openEditor();
     }
   });
 
-  actions.append(editBtn, deleteBtn);
+  main.appendChild(titleEl);
+  // 倒數中：文字下方顯示「已完成 · 撤銷」。
+  if (pending) main.appendChild(buildUndoBar(todo.id));
+
+  const archiveBtn = document.createElement("button");
+  archiveBtn.type = "button";
+  archiveBtn.className = "todo-archive";
+  archiveBtn.textContent = "✕";
+  archiveBtn.setAttribute("aria-label", `封存：${todo.title}`);
+  archiveBtn.title = "封存";
+  archiveBtn.addEventListener("click", () => archiveTodo(todo.id));
 
   const container = document.createElement("div");
   container.style.display = "contents";
-  container.append(checkboxLabel, main, actions);
+  container.append(checkboxLabel, main, archiveBtn);
   wrapper.appendChild(container);
   return wrapper;
 }
@@ -1063,6 +1221,29 @@ function resizeChatInput() {
 }
 
 chatInputEl.addEventListener("input", resizeChatInput);
+
+/* --------------------------------------------------------------------------
+ * iOS 鍵盤避讓
+ * --------------------------------------------------------------------------
+ * iOS Safari 鍵盤彈出時不會縮小版面視窗（layout viewport），只會捲動頁面，
+ * 因此 fixed 定位的聊天視窗會被鍵盤蓋住。這裡用 visualViewport 量出鍵盤高度
+ * 寫進 --keyboard-inset；CSS 據此把視窗下緣往上抬、同時等量縮短高度，
+ * 因為上緣位置不變，效果就是「訊息區被壓縮」而不是整個視窗被推出畫面。
+ * ------------------------------------------------------------------------ */
+if (window.visualViewport) {
+  const updateKeyboardInset = () => {
+    const vv = window.visualViewport;
+    // 版面高度與可視高度的差，扣掉可視區被捲動的位移，即為鍵盤佔用的高度。
+    const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty(
+      "--keyboard-inset",
+      `${Math.round(inset)}px`
+    );
+  };
+  window.visualViewport.addEventListener("resize", updateKeyboardInset);
+  window.visualViewport.addEventListener("scroll", updateKeyboardInset);
+  updateKeyboardInset();
+}
 
 chatFormEl.addEventListener("submit", async (e) => {
   e.preventDefault();
