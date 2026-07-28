@@ -18,4 +18,5 @@
 window.APP_CONFIG = {
   SUPABASE_URL: "https://qvokiftcyeptmokvrxcp.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_JeBElRNREZpvpJiH5eGHSw_d3h6cFOC",
+  VAPID_PUBLIC_KEY: "window.APP_CONFIG.VAPID_PUBLIC_KEY",
 };
