@@ -1,0 +1,16 @@
+{
+  "name": "sechdule-todo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "個人行事曆／待辦事項管理工具。前端是純 HTML/CSS/JS 不需要建置；這份 package.json 只服務 scripts/ 底下由 GitHub Actions 執行的 Node 腳本。",
+  "type": "module",
+  "scripts": {
+    "daily-reminder": "node scripts/daily-reminder.mjs"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

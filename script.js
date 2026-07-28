@@ -60,6 +60,10 @@ const drawerToggleEl = document.getElementById("drawer-toggle");
 const drawerCloseEl = document.getElementById("drawer-close");
 const drawerBackdropEl = document.getElementById("drawer-backdrop");
 
+const pushToggleEl = document.getElementById("push-toggle");
+const pushStatusEl = document.getElementById("push-status");
+const pushIosHintEl = document.getElementById("push-ios-hint");
+
 const calendarViewEl = document.getElementById("calendar-view");
 const todosViewEl = document.getElementById("todos-view");
 const bottomNavEl = document.getElementById("bottom-nav");
@@ -1527,9 +1531,233 @@ function closeDrawer() {
 drawerToggleEl.addEventListener("click", () => {
   if (isDrawerOpen()) closeDrawer();
   else openDrawer();
+  // 開抽屜時重新確認一次推播狀態：使用者可能在系統設定裡改過通知權限，
+  // 那不會觸發任何網頁事件，只能在每次開啟時重新讀。
+  if (isDrawerOpen()) refreshPushUi();
 });
 drawerCloseEl.addEventListener("click", closeDrawer);
 drawerBackdropEl.addEventListener("click", closeDrawer);
+
+/* ==========================================================================
+ * 每日提醒（Web Push 訂閱）
+ * --------------------------------------------------------------------------
+ * 訂閱資料存在 Supabase 的 push_subscriptions，每天早上由 GitHub Actions
+ * （scripts/daily-reminder.mjs）用 web-push 發送。
+ *
+ * 這裡要處理的狀態比想像中多，整理成一張表：
+ *
+ *   狀態                        開關    說明文字
+ *   ------------------------    ----    --------------------------------
+ *   VAPID 公鑰未設定            停用    尚未設定推播金鑰
+ *   瀏覽器不支援                停用    這個瀏覽器不支援
+ *   iOS 但不是主畫面模式        停用    另外顯示「加入主畫面」提示
+ *   通知權限已被拒絕            停用    另外顯示「到系統設定開啟」提示
+ *   已訂閱                      開啟    已開啟
+ *   未訂閱                      關閉    已關閉
+ *
+ * ⚠️ 權限請求一律由使用者點開關觸發，絕不在載入時自動跳。
+ *    瀏覽器對「未經互動就請求權限」的網站會直接封鎖，而且一旦被拒絕，
+ *    程式就再也要不回來了（只能請使用者自己去系統設定改）。
+ * ========================================================================== */
+
+/** VAPID 公鑰由使用者填在 config.js（見該檔案的說明）。留空代表尚未設定。 */
+const VAPID_PUBLIC_KEY = (window.APP_CONFIG.VAPID_PUBLIC_KEY || "").trim();
+
+/**
+ * VAPID 公鑰是 base64url 字串，但 pushManager.subscribe() 的
+ * applicationServerKey 只吃 Uint8Array，要自己轉。
+ * base64url 與標準 base64 的差別：-_ 對應 +/，而且尾端沒有 = 補齊。
+ */
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+function isPushSupported() {
+  return (
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window
+  );
+}
+
+/** 是否從主畫面圖示開啟（PWA standalone）。iOS 用的是非標準的 navigator.standalone。 */
+function isStandaloneMode() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true
+  );
+}
+
+/**
+ * 是否為 iOS／iPadOS。
+ * iPadOS 13 之後的 Safari 預設回報成 Macintosh，所以額外用
+ * 「有觸控點的 Mac」這個特徵補判斷，否則 iPad 會被誤判成桌機、
+ * 拿不到「要先加入主畫面」的提示。
+ */
+function isIosDevice() {
+  const ua = navigator.userAgent;
+  return (
+    /iPad|iPhone|iPod/.test(ua) ||
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+  );
+}
+
+/** 取得目前這台裝置的推播訂閱（沒有就回 null）。 */
+async function getCurrentSubscription() {
+  if (!isPushSupported()) return null;
+  const registration = await navigator.serviceWorker.ready;
+  return registration.pushManager.getSubscription();
+}
+
+/**
+ * 依目前環境與訂閱狀態重畫抽屜裡的開關。
+ * 這是唯一決定開關外觀的地方——所有流程結束後都回來呼叫它，
+ * 而不是各自去改 checkbox，避免畫面與實際狀態不一致。
+ */
+async function refreshPushUi() {
+  if (!pushToggleEl) return;
+
+  const setState = ({ checked, disabled, status, iosHint = false }) => {
+    pushToggleEl.checked = checked;
+    pushToggleEl.disabled = disabled;
+    pushStatusEl.textContent = status;
+    pushIosHintEl.hidden = !iosHint;
+  };
+
+  if (!VAPID_PUBLIC_KEY) {
+    setState({
+      checked: false,
+      disabled: true,
+      status: "尚未設定推播金鑰（config.js 的 VAPID_PUBLIC_KEY 還是空的）。",
+    });
+    return;
+  }
+
+  if (!isPushSupported()) {
+    setState({
+      checked: false,
+      disabled: true,
+      status: "這個瀏覽器不支援推播通知。",
+    });
+    return;
+  }
+
+  // iOS 只有在「加入主畫面」後才支援 Web Push，用瀏覽器直接開是訂不了的。
+  if (isIosDevice() && !isStandaloneMode()) {
+    setState({
+      checked: false,
+      disabled: true,
+      status: "",
+      iosHint: true,
+    });
+    return;
+  }
+
+  // 被拒絕過就不再請求（也請求不到），只能引導去系統設定改。
+  if (Notification.permission === "denied") {
+    setState({
+      checked: false,
+      disabled: true,
+      status:
+        "通知權限已被拒絕。要重新開啟，請到瀏覽器或系統的網站設定中，把這個網站的通知權限改成「允許」，再回來開啟這個開關。",
+    });
+    return;
+  }
+
+  const subscription = await getCurrentSubscription();
+  setState({
+    checked: Boolean(subscription),
+    disabled: false,
+    status: subscription
+      ? "已開啟。每天早上會把當天的待辦推播到這台裝置。"
+      : "已關閉。開啟後會請求通知權限。",
+  });
+}
+
+/** 開啟：請求權限 → 建立訂閱 → 寫進 Supabase。 */
+async function enablePush() {
+  // 這一步必須在使用者手勢中呼叫，所以只能從開關的事件處理裡進來。
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    // 使用者按了「封鎖」或直接關掉對話框：不重試、不再問，交給 refreshPushUi
+    // 顯示對應說明（denied 會走到「請到系統設定開啟」那一支）。
+    await refreshPushUi();
+    return;
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.subscribe({
+    // userVisibleOnly: true 是必填，代表「收到推播一定會顯示通知」。
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+  });
+
+  const json = subscription.toJSON();
+  const { error } = await supabaseClient.from("push_subscriptions").upsert(
+    {
+      user_id: currentUser.id,
+      endpoint: subscription.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth,
+      // 之前關過又重開時要把封存時間清掉，否則排程會當它還是取消狀態。
+      revoked_at: null,
+    },
+    // 同一台裝置重新訂閱時 endpoint 不變，靠它更新既有那一列，
+    // 不要每次開關都新增一筆（會收到重複通知）。
+    { onConflict: "endpoint" }
+  );
+
+  if (error) {
+    // 資料庫沒寫成功的話，本地訂閱留著也沒意義（排程讀不到），直接退掉，
+    // 讓畫面回到「已關閉」，而不是顯示已開啟卻永遠收不到通知。
+    await subscription.unsubscribe();
+    throw new Error(`訂閱寫入失敗：${error.message}`);
+  }
+}
+
+/** 關閉：退掉本地訂閱 → 在 Supabase 寫入 revoked_at（UPDATE，不是 DELETE）。 */
+async function disablePush() {
+  const subscription = await getCurrentSubscription();
+  if (!subscription) return;
+
+  const { endpoint } = subscription;
+  await subscription.unsubscribe();
+
+  const { error } = await supabaseClient
+    .from("push_subscriptions")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("endpoint", endpoint);
+
+  if (error) throw new Error(`取消訂閱寫入失敗：${error.message}`);
+}
+
+if (pushToggleEl) {
+  pushToggleEl.addEventListener("change", async () => {
+    // 使用者按下的當下 checkbox 已經自己翻面了，但真正的狀態要等
+    // 權限與資料庫都完成才算數。先鎖住避免連點，全部做完再由
+    // refreshPushUi() 依「實際狀態」重畫，畫面就不會跟事實脫節。
+    const wantOn = pushToggleEl.checked;
+    pushToggleEl.disabled = true;
+    pushStatusEl.textContent = wantOn ? "正在開啟…" : "正在關閉…";
+
+    try {
+      if (wantOn) await enablePush();
+      else await disablePush();
+    } catch (err) {
+      console.error("推播設定失敗：", err);
+      await refreshPushUi();
+      pushStatusEl.textContent = `設定失敗：${err.message}`;
+      return;
+    }
+
+    await refreshPushUi();
+  });
+}
 
 /* ==========================================================================
  * 全部待辦：全螢幕檢視（與月曆互斥）
@@ -1553,6 +1781,40 @@ function closeTodosView() {
   todosViewEl.classList.remove("is-open");
   calendarViewEl.hidden = false;
   setActiveNav("calendar");
+}
+
+/* --------------------------------------------------------------------------
+ * 從通知進入待辦一覽
+ * --------------------------------------------------------------------------
+ * 點擊推播通知有兩種情況，兩邊都要接：
+ *
+ *   a) App 沒開著 → Service Worker 用 openWindow('./index.html#todos')
+ *      開新視窗，這裡在載入時讀 hash。
+ *   b) App 已經開著 → Service Worker 聚焦那個分頁並 postMessage，
+ *      因為對一個已載入的分頁改 hash 不會觸發任何事情。
+ *
+ * 這個 hash 只是通知的進入點標記，讀完就用 replaceState 清掉，
+ * 不參與畫面狀態、也不做路由——重新整理不會再跳到待辦一覽。
+ * ------------------------------------------------------------------------ */
+
+/** 若網址帶著 #todos（從通知冷啟動），切到待辦一覽並清掉 hash。 */
+function consumeNotificationHash() {
+  if (window.location.hash !== "#todos") return;
+  openTodosView();
+  history.replaceState(
+    null,
+    "",
+    window.location.pathname + window.location.search
+  );
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.type === "navigate" && data.view === "todos") {
+      openTodosView();
+    }
+  });
 }
 
 /* ==========================================================================
@@ -1699,6 +1961,11 @@ function renderAuthState(user) {
     userEmailEl.textContent = user.email || "";
     renderChatMessages();
     fetchTodos();
+    // 抽屜裡的每日提醒開關要等登入後才有意義（訂閱要綁 user_id）。
+    refreshPushUi();
+    // 從通知冷啟動時直接進待辦一覽。放在登入後才做，
+    // 未登入時整個 #app-main 是隱藏的，切了也看不到。
+    consumeNotificationHash();
   } else {
     // 登出後清掉畫面上的資料，避免殘留，並收起所有浮層／回到月曆。
     todos = [];

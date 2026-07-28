@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>" />
 
 <!-- ============ PWA 設定：manifest + meta 標籤 + 圖示 ============ -->
-<link rel="manifest" href="manifest.json?v=26" />
+<link rel="manifest" href="manifest.json?v=27" />
 <meta name="theme-color" content="#A8CFE3" />
 <!-- iOS Safari 不吃 manifest.json 的 display/name，需要另外用這些 meta 標籤設定
      「加入主畫面」後的全螢幕模式與名稱。 -->
@@ -28,7 +28,7 @@
         請把下方所有的 v=? 一起 +1，使用者的瀏覽器才會抓到最新版，
         而不是舊的快取檔。（sw.js 本身不用加版本參數，它的快取版本
         由 sw.js 檔案內的 CACHE_NAME 常數控制，見該檔案開頭註解。）-->
-<link rel="stylesheet" href="style.css?v=26" />
+<link rel="stylesheet" href="style.css?v=27" />
 </head>
 <body>
   <!-- ============ 啟動畫面（Splash）============
@@ -218,7 +218,34 @@
           <button type="button" id="drawer-close" class="icon-btn" aria-label="關閉選單">✕</button>
         </div>
 
-        <p class="drawer-empty">更多模組開發中</p>
+        <!-- ============ 每日提醒（Web Push 訂閱開關）============
+             ⚠️ 通知權限一律由使用者點這個開關觸發，絕不在載入時自動請求。
+             瀏覽器對「未經互動就跳權限」的網站會直接封鎖後續請求，
+             而且被拒絕過就再也要不回來。 -->
+        <section class="drawer-section" aria-labelledby="push-heading">
+          <h2 id="push-heading" class="drawer-section-title">每日提醒</h2>
+          <p class="drawer-section-hint">
+            每天早上把當天的待辦事項推播到這台裝置。
+          </p>
+
+          <label class="switch-row" for="push-toggle">
+            <span class="switch-label">開啟每日提醒</span>
+            <input type="checkbox" id="push-toggle" class="switch-input" />
+            <span class="switch-track" aria-hidden="true">
+              <span class="switch-thumb"></span>
+            </span>
+          </label>
+
+          <!-- 目前狀態／錯誤訊息（未訂閱、已訂閱、權限被拒⋯⋯） -->
+          <p id="push-status" class="push-status" role="status" aria-live="polite"></p>
+
+          <!-- iOS 專屬提示：Safari 只有在「加入主畫面」後才支援 Web Push。
+               偵測到不是 standalone 模式時才顯示。 -->
+          <p id="push-ios-hint" class="push-hint" hidden>
+            iOS 需要先把這個網頁「加入主畫面」，從主畫面圖示開啟後才收得到通知。
+            請點 Safari 分享選單 → 加入主畫面。
+          </p>
+        </section>
       </aside>
 
       <!-- ============ AI 助理：右下角浮動聊天泡泡（全域元件）============
@@ -376,8 +403,8 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <!-- ?v=N 版本參數：修改後請連同上方 style.css 一起更新版本號（見檔案開頭註解）。 -->
-  <script src="config.js?v=26"></script>
-  <script src="script.js?v=26"></script>
+  <script src="config.js?v=27"></script>
+  <script src="script.js?v=27"></script>
 
   <!-- 註冊 Service Worker（見 sw.js）：提供基本的 App Shell 快取，
        讓 PWA 開啟更快、離線時至少能顯示介面外殼。與待辦/聊天等
