@@ -1,4 +1,0 @@
-project_id = "qvokiftcyeptmokvrxcp"
-
-[functions.bright-worker]
-verify_jwt = true
