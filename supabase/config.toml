@@ -1,0 +1,20 @@
+# Supabase 專案設定。
+#
+# ⚠️ 這是 TOML 檔，每一行都必須是 key = value 或 [section] 標頭。
+#    貼進任何「裸字串」（例如金鑰、備忘）都會讓整個檔案解析失敗，
+#    而 supabase CLI 只會回一行沒有行號的 ProjectConfigParseError，
+#    很難查。deploy workflow 已加了一個獨立的語法檢查步驟會先擋下來
+#    並指出確切行號，但最保險的還是不要把不相關的東西貼進來。
+#
+#    金鑰類的東西一律不放這裡：
+#      - VAPID 公鑰 → config.js 的 VAPID_PUBLIC_KEY
+#      - VAPID 私鑰 / service_role → GitHub Secrets，絕不進 repo
+
+project_id = "qvokiftcyeptmokvrxcp"
+
+[functions.bright-worker]
+# JWT 驗證由這裡決定，不要改用指令列的 --no-verify-jwt 覆寫，
+# 否則會出現「repo 裡寫 true、線上跑的卻是 false」的落差。
+# （順帶一提：CLI 對 verify_jwt 的預設值本來就是 true，這裡明寫出來
+#   是為了讓設定有跡可循，不依賴預設值哪天會不會變。）
+verify_jwt = true

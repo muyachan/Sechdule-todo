@@ -39,6 +39,40 @@ jobs:
         with:
           version: latest
 
+      # supabase CLI 對 config.toml 的語法錯誤只會吐一行
+      # 「ProjectConfigParseError」，沒有行號、沒有原因，而且加 --debug、
+      # --log-level trace、--output-format json 都問不出更多細節
+      #（用 CLI 2.110.0 實測過）。這一步先用 Python 的 tomllib 解析同一個
+      # 檔案，TOML 語法有問題時會明確指出「第幾行第幾欄、期待什麼」，
+      # 把原本要靠猜的除錯過程變成一眼就看得出來。
+      #
+      # config.toml 是選用的（刪掉也能部署，設定會走 CLI 預設值），
+      # 所以檔案不存在時直接跳過，不當成錯誤。
+      - name: Validate supabase/config.toml syntax
+        run: |
+          if [ ! -f supabase/config.toml ]; then
+            echo "ℹ️ 沒有 supabase/config.toml，跳過語法檢查（這是允許的，設定會走 CLI 預設值）。"
+            exit 0
+          fi
+          python3 - <<'PY'
+          import sys, tomllib
+          path = "supabase/config.toml"
+          with open(path, "rb") as f:
+              raw = f.read()
+          try:
+              tomllib.load(__import__("io").BytesIO(raw))
+          except tomllib.TOMLDecodeError as e:
+              print(f"::error file={path}::TOML 語法錯誤：{e}")
+              print(f"\n❌ {path} 不是合法的 TOML，supabase CLI 會以 "
+                    f"ProjectConfigParseError 中止且不告訴你原因。")
+              print(f"詳細位置：{e}\n")
+              print("檔案內容（含行號）：")
+              for i, line in enumerate(raw.decode("utf-8", "replace").splitlines(), 1):
+                  print(f"  {i:>3} | {line}")
+              sys.exit(1)
+          print(f"✅ {path} 語法正確。")
+          PY
+
       # ⚠️ 這裡刻意不加 --no-verify-jwt 之類的旗標。
       # JWT 驗證由 supabase/config.toml 的 [functions.bright-worker]
       # verify_jwt 決定，指令列一旦覆寫，設定檔就形同虛設，
@@ -46,9 +80,14 @@ jobs:
       #
       # 不指定函式名稱＝部署 supabase/functions/ 底下的全部函式，
       # 之後新增函式不用回來改這支 workflow。
+      #
+      # --debug 會印出 CLI 版本、使用中的 profile、以及每一個對
+      # api.supabase.com 的 HTTP 請求，網路／認證／API 類的失敗看得到全貌。
+      #（但幫不上 config.toml 語法錯誤——那類錯誤 CLI 不論如何都只給
+      #  ProjectConfigParseError 一行，所以才有上面那個獨立的檢查步驟。）
       - name: Deploy
         env:
           # 認證一律取自 GitHub Secrets，yml 內不寫死任何值。
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --debug
