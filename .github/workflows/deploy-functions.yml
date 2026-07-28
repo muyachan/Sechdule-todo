@@ -34,10 +34,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 釘住版本而非用 latest：latest 會在完全沒動這個 repo 的情況下
+      # 讓 CLI 自己換版本，一旦 Supabase 發了帶破壞性變更的新版，
+      # 部署會突然壞掉，而且查不出是哪次改動造成的（因為根本沒有改動）。
+      # 這裡釘的版本是這次除錯時實測過、能正常部署的版本；之後要升級
+      # 的話，記得先在本機用同一個版本試跑一次 deploy 再改這裡。
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.110.0
 
       # supabase CLI 對 config.toml 的語法錯誤只會吐一行
       # 「ProjectConfigParseError」，沒有行號、沒有原因，而且加 --debug、
