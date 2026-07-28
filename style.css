@@ -1588,7 +1588,7 @@ input.todo-title-input:focus {
 }
 .chat-row.ai {
   align-self: flex-start;
-  max-width: calc(var(--chat-bubble-max) + 46px);
+  max-width: calc(var(--chat-bubble-max) + 72px);
 }
 .chat-row.user {
   align-self: flex-end;
@@ -1638,8 +1638,7 @@ input.todo-title-input:focus {
   word-break: auto-phrase;
   overflow-wrap: break-word;
   line-break: strict;
-  text-wrap: wrap;
-  word-break: auto-phrase;
+  text-wrap: pretty;
   box-shadow: var(--shadow-sm);
 }
 
