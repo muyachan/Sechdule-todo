@@ -34,10 +34,20 @@
   --color-nav-pill-bg: #e6f1fb;
   --color-nav-pill-fg: #2f7ba6;
 
-  /* 底部導航列高度；加上 iOS 安全區後的總高度，供浮動元件避讓用。 */
+  /* 底部導航列：改成浮起的藥丸列，不再貼齊螢幕邊緣。
+     --bottom-nav-height 是列本身的高度（不含任何安全區留白）；
+     --bottom-nav-gap 是列的下緣與安全區之間再留的間距；
+     --bottom-nav-margin-x 是列與螢幕左右邊緣的留白。
+     --bottom-nav-total 是「從螢幕最下緣量起，列真正占用掉的總高度」
+     （安全區 + gap + 列高本身），聊天浮動按鈕、聊天視窗、toast 全部是
+     從這個變數往上疊出間距的，所以只要這裡改對，那些連動元件的位置
+     會自動跟著正確，不需要一個個去改。 */
   --bottom-nav-height: 56px;
+  --bottom-nav-gap: 10px;
+  --bottom-nav-margin-x: 14px;
   --bottom-nav-total: calc(
-    var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px)
+    var(--bottom-nav-height) + var(--bottom-nav-gap) +
+      env(safe-area-inset-bottom, 0px)
   );
 
   /* 浮動按鈕尺寸與它距離底部導航列的間距（手機版會覆寫）。 */
@@ -52,6 +62,14 @@
   --chat-panel-top-gap: 24px;
   /* iOS 鍵盤高度：由 script.js 依 visualViewport 即時更新。 */
   --keyboard-inset: 0px;
+
+  /* 聊天訊息泡泡的寬度上限，佔 .chat-messages 容器寬度的比例。
+     78% 落在「不要太窄造成頻繁換行」與「不要太寬到跟對話框等寬」之間；
+     AI 列另外要用 calc() 加回頭像＋間距的寬度，見 .chat-row 的註解。
+     這裡刻意用同一個值同時服務桌面與手機（不再像過去分兩組數字），
+     因為 calc() 已經把頭像佔用的空間精確扣除，不需要再用「手機多留一點
+     餘量」這種經驗值去補償。 */
+  --chat-bubble-max: 78%;
 
   /* 語意色（維持警示辨識度，不隨版面改成灰階：過期/刪除仍需要明顯區分） */
   --color-danger: #c1483d;
@@ -75,7 +93,13 @@
   --dur-fast: 150ms;
   --dur-base: 200ms;
   --dur-slow: 250ms;
+  /* 回彈曲線：帶明顯過衝（1.56），用在按壓回饋、勾選框、聊天泡泡這類
+     「有彈性、活潑」的小型互動上。 */
   --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* 平滑減速曲線：不過衝，用在抽屜這類「大面積滑入滑出」的面板上——
+     --ease-bounce 套在整片抽屜的位移上會有明顯的回彈甩動，面積越大
+     感覺越誇張、越不像「滑動」，改用這條純減速的曲線才會順。 */
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
 
   --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.06), 0 14px 32px rgba(0, 0, 0, 0.1);
   --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.08), 0 6px 14px rgba(0, 0, 0, 0.05);
@@ -628,7 +652,9 @@ body {
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
   transform: translateX(100%);
   visibility: hidden;
-  transition: transform var(--dur-slow) var(--ease-bounce),
+  /* 原本用 --ease-bounce（回彈曲線）滑入滑出，抽屜面積大，回彈的甩動
+     感被放大得很明顯，改用 --ease-smooth（純減速、不過衝）比較滑順。 */
+  transition: transform var(--dur-slow) var(--ease-smooth),
     visibility var(--dur-slow) ease;
 }
 
@@ -817,22 +843,32 @@ body {
    底部導航列
    --------------------------------------------------------------------------
    五等分格子、只有圖示。前三格切換畫面（有選取狀態），後兩格是動作。
-   padding-bottom 吃 iOS 安全區，避免被 home indicator 蓋住。
+   改成獨立浮起的藥丸列：左右留邊距、下緣浮在安全區上方一小段距離，
+   四角全部是全圓角（不再貼邊，四個角都看得到）。
+   安全區改由 bottom 定位吸收（env(...) + --bottom-nav-gap），不再用
+   padding-bottom 撐開列本身的高度——這樣列的可視高度永遠是乾淨的
+   --bottom-nav-height，不會因為裝置有沒有安全區而忽高忽低。
    ========================================================================== */
 .bottom-nav {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: var(--bottom-nav-margin-x);
+  right: var(--bottom-nav-margin-x);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--bottom-nav-gap));
   z-index: 90;
   display: flex;
   align-items: stretch;
-  height: var(--bottom-nav-total);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: var(--bottom-nav-height);
   background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
-  /* 同上：底部兩角貼著螢幕邊緣，只圓上面兩角。 */
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  /* 淡陰影讓它從背景浮起來，用跟待辦列/當日清單同一級的輕量陰影
+     （--shadow-card 是給 modal/抽屜這類大型浮層用的，太重）。 */
+  box-shadow: var(--shadow-sm);
+  /* 四角全圓後，最左／最右兩顆按鈕的選取藥丸底（.bottom-nav-btn::before）
+     理論上不會伸到圓角範圍外（幾何上還有安全餘量），但沒有實際的裁切
+     保證。加 overflow: hidden 讓外層圓角同時也是子元素的裁切邊界，
+     不需要精算每個尺寸下的餘量夠不夠。 */
+  overflow: hidden;
 }
 
 .bottom-nav-btn {
@@ -893,12 +929,12 @@ body {
 .bottom-nav-btn svg {
   display: block;
   position: relative; /* 疊在藥丸底之上 */
-  /* 整排圖示原本置中在導航列的完整高度內，貼著螢幕最下緣的安全區
-     上方，看起來偏低。用 transform 往上移一點——這裡特意不改
-     --bottom-nav-total 或改 padding/height 來調整位置，因為聊天
-     浮動按鈕、聊天視窗下緣、toast 的定位全部是從 --bottom-nav-total
-     算出來的，牽一髮動全身；transform 只影響視覺位置，不影響版面
-     尺寸，改這裡不會波及其他元件。 */
+  /* 這是單純的視覺微調（跟列現在浮不浮起、貼不貼邊無關）：圖示置中在
+     按鈕的完整高度內時，看起來會比正中央略低一點點，往上移 4px 比較
+     舒服。用 transform 而不是改 --bottom-nav-total 或 padding/height，
+     因為聊天浮動按鈕、聊天視窗下緣、toast 的定位全部是從
+     --bottom-nav-total 算出來的，牽一髮動全身；transform 只影響視覺
+     位置，不影響版面尺寸，改這裡不會波及其他元件。 */
   transform: translateY(-4px);
 }
 
@@ -1535,19 +1571,29 @@ input.todo-title-input:focus {
   margin-bottom: 12px;
 }
 
-/* 每則訊息一列：AI 在左（含頭像），使用者在右。 */
+/* 每則訊息一列：AI 在左（含頭像），使用者在右。
+   泡泡本身的寬度上限（見下方 .chat-message 註解）要吃到 --chat-bubble-max，
+   但 max-width 只能寫在這裡（.chat-row），不能直接寫在 .chat-message 上。
+   原因：.chat-message 是 .chat-row 的 flex 子元素，而 .chat-row 本身沒有
+   明確寬度（它靠 align-self: flex-start/flex-end 縮成內容寬度），
+   百分比 max-width 若寫在 .chat-message 上，會因為找不到「明確寬度的
+   容器」而算不出結果（等同失效）。.chat-row 的容器是 .chat-messages，
+   那個是有明確寬度的，百分比才算得出來。
+   AI 列要扣掉頭像＋間距的寬度，泡泡才會跟使用者列一樣寬：
+   頭像 38px（.chat-avatar）+ gap 8px = 46px，用 calc() 補回去。 */
 .chat-row {
   display: flex;
   gap: 8px;
   align-items: flex-end;
-  max-width: 85%;
 }
 .chat-row.ai {
   align-self: flex-start;
+  max-width: calc(var(--chat-bubble-max) + 46px);
 }
 .chat-row.user {
   align-self: flex-end;
   flex-direction: row-reverse;
+  max-width: var(--chat-bubble-max);
 }
 
 /* Mia 的頭像：<img>，圓形裁切。object-fit: cover 保證非正方形的圖也不會
@@ -1575,13 +1621,21 @@ input.todo-title-input:focus {
      word-break 用 normal + overflow-wrap: break-word，不用 break-all——
      break-all 連英文單字、網址都會從中間切斷，normal + break-word 只在
      真的放不下整個詞時才換行，一般文字仍照標準規則斷行。
-     line-break: strict 是這裡真正要修的問題：預設的寬鬆斷行規則允許
-     「「」（」這類開引號留在行尾、「，」「。」「」」跑到行首，
+     line-break: strict 是所有瀏覽器都吃得到的基礎：預設的寬鬆斷行規則
+     允許「「」（」這類開引號留在行尾、「，」「。」「」」跑到行首，
      strict 套用嚴格的日中韓排版規則，兩者都不允許。
+     word-break: auto-phrase 是新版 Chrome/Edge 才支援的加強——依語意
+     把詞組當單位斷行（例如不會把「待辦事項」斷成「待辦／事項」），
+     斷句會更像正常閱讀的中文，而不是逐字硬切。寫在 word-break: normal
+     後面：不支援的瀏覽器會整條宣告直接失效（CSS 對不認得的屬性值是
+     整條略過，不是退回某個預設值），留著上面那行 normal 繼續生效，
+     支援的瀏覽器則因為層疊順序吃到這行更進階的值——不需要用
+     @supports 判斷，天然就是漸進增強。
      text-wrap: pretty 讓瀏覽器盡量避免段落最後一行只剩一兩個字（孤行），
      不支援的瀏覽器會忽略這行，退回原本的排版，不影響功能。 */
   line-height: 1.7;
   word-break: normal;
+  word-break: auto-phrase;
   overflow-wrap: break-word;
   line-break: strict;
   text-wrap: pretty;
@@ -1969,9 +2023,9 @@ input.todo-title-input:focus {
     justify-content: flex-end;
   }
 
-  .chat-row {
-    max-width: 92%;
-  }
+  /* .chat-row 的寬度上限已改用 --chat-bubble-max 搭配 calc() 精確計算
+     （見該規則的註解），在任何螢幕寬度下都會得到一致的泡泡寬度比例，
+     不需要再像過去那樣另外為手機寫一組經驗值。 */
 }
 
 /* ==========================================================================
