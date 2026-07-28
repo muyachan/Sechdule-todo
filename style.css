@@ -1638,7 +1638,8 @@ input.todo-title-input:focus {
   word-break: auto-phrase;
   overflow-wrap: break-word;
   line-break: strict;
-  text-wrap: pretty;
+  text-wrap: wrap;
+  word-break: auto-phrase;
   box-shadow: var(--shadow-sm);
 }
 
