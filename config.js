@@ -29,5 +29,5 @@ window.APP_CONFIG = {
    * 留空時，抽屜裡的「每日提醒」開關會自動停用並顯示「尚未設定推播金鑰」，
    * 不會拋錯，也不會去要通知權限。填好之後重新整理就會啟用。
    * ---------------------------------------------------------------------- */
-  VAPID_PUBLIC_KEY: "window.APP_CONFIG.VAPID_PUBLIC_KEY",
+  VAPID_PUBLIC_KEY: "BLdadEYHtM3bDc6XkHh6CVGYapUoS8OzBV-FGMjrGIJ8jdPZ-VjYCQ8Zcn5rYVF9TX91odRknAAJGR8KeWyyY8o",
 };
