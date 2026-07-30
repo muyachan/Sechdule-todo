@@ -15,6 +15,10 @@
 - Treat the GitHub repository, branches, commits, pull requests, diffs, Actions,
   the production Supabase environment, deployments, and device results as
   authoritative evidence.
+- Treat open or draft pull requests and unmerged commits as evidence of proposed
+  changes only; they are not completed, merged, deployed, or live state.
+- Describe work as completed only after it is merged and, when applicable,
+  deployed or explicitly confirmed by the user.
 - Planning documents and AI completion reports do not replace authoritative
   evidence.
 - Do not assume the repository contains the complete production Supabase schema
@@ -32,6 +36,9 @@
 - Use one feature branch and one pull request per feature.
 - Do not modify `main` directly.
 - Do not merge pull requests; the user decides whether to merge.
+- Before updating a pull request, verify that the local branch and remote PR head
+  share the same history. If they diverge, stop and report the mismatch before
+  creating further commits or updating the PR.
 - Claude may act only as an independent reviewer and must not modify the same
   task concurrently with Codex.
 - Never claim an unexecuted test passed.
@@ -46,6 +53,9 @@
 - Do not perform a broad refactor merely because a file is large.
 - Do not manipulate the DOM as a substitute for the official data-write path.
 - AI models must not write to the database without backend validation.
+- Any task that changes Mia write behavior must use the approved Pending
+  Operation proposal → user confirmation → RPC flow. Do not add or expand direct
+  model-triggered database writes.
 
 ## Data and deletion rules
 
