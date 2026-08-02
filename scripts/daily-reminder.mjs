@@ -21,6 +21,7 @@
  */
 
 import webpush from "web-push";
+import { applyDueTodoFilters } from "./todo-query-filters.js";
 
 /**
  * 以指定時區取得「今天」的 YYYY-MM-DD 字串。
@@ -104,7 +105,7 @@ export function buildFallbackNotification(todos) {
 }
 
 /**
- * 用 Supabase REST API 讀取「未完成且截止日 <= 今天」的待辦事項。
+ * 用 Supabase REST API 讀取「未封存、未完成且截止日 <= 今天」的待辦事項。
  * @param {string} supabaseUrl
  * @param {string} serviceRoleKey
  * @param {string} todayStr YYYY-MM-DD
@@ -113,8 +114,7 @@ export function buildFallbackNotification(todos) {
 export async function fetchDueTodos(supabaseUrl, serviceRoleKey, todayStr) {
   const url = new URL(`${supabaseUrl}/rest/v1/todos`);
   url.searchParams.set("select", "title,due_date,completed_at");
-  url.searchParams.set("completed_at", "is.null");
-  url.searchParams.set("due_date", `lte.${todayStr}`);
+  applyDueTodoFilters(url.searchParams, todayStr);
   url.searchParams.set("order", "due_date.asc");
 
   const res = await fetch(url, {
