@@ -19,6 +19,7 @@ diff 是空的，於是程式在呼叫 API 前就自己提前返回了。
 
 import json
 import os
+import re
 import subprocess
 
 import requests
@@ -54,25 +55,38 @@ REVIEW_SYSTEM_PROMPT = """你是自動協作管線的產出審查者。
   "violations": ["違反的限制，例如改了不該改的檔案"],
   "notes": "簡短說明，一兩句話",
   "code_explanation": {
-    "overview": "這次改動整體上在做什麼、採用什麼設計思路，三到五句話",
+    "overview": "這次改動在做什麼、為什麼這樣做。最多 3 句話。",
     "functions": [
       {
-        "name": "檔名：函式名或常數名",
-        "purpose": "它負責什麼",
-        "how": "它實際怎麼做到的",
-        "note": "為什麼這樣寫，或閱讀時要注意什麼。沒有特別的就寫「—」"
+        "name": "檔名：函式名",
+        "purpose": "一句話講它負責什麼",
+        "note": "只寫「為什麼這樣寫」或「看的時候要注意什麼」。一到兩句。沒有就寫「—」"
       }
     ]
   }
 }
 
-【寫 code_explanation 的要求】
-讀者是能看懂邏輯、但還在學語法的人，所以：
-- 用白話解釋語法做了什麼，例如展開運算子、Object.freeze 這類寫法要說明作用
-- 說明「為什麼這樣寫」，不要只說「這樣寫」
-- 每個被新增或明顯修改的函式、常數都要列進 functions
-- 不要為了湊數把沒改到的東西也列進去
-- 不要用「顯然」「簡單來說」這類詞，直接講內容"""
+【寫 code_explanation 的規則】
+讀者看得懂邏輯，但還在學語法。目標是他讀完能自己去看 diff，
+不是取代 diff。所以要短。
+
+- overview 最多 3 句
+- functions 最多列 5 個，只列這次真的有改到的，不要湊數
+- 每個 function 的 purpose 一句、note 一到兩句，不要展開
+- 遇到不常見的語法就用日常話講它的效果，不要只給名稱
+- 不要寫「簡單來說」「顯然」「值得注意的是」這類開場，直接講
+
+【長度與講法示範】（學這個寫法，不要照抄內容）
+
+好的寫法：
+  purpose 寫成：產生每日提醒要用的查詢條件。
+  note 寫成：三個點是把共用條件複製一份進來，所以不會動到原本那份。
+  這次的修正就在這，複製進來之後就自動有了排除已封存的條件。
+
+不好的寫法，太長而且堆術語：
+  note 寫成：此處使用 ES6 的 spread operator 進行淺層複製，
+  確保物件參考隔離性，避免因共享參考導致的非預期副作用，
+  同時符合不可變性原則，後續維護時可降低耦合度⋯⋯"""
 
 
 def _stage_all_changes():
@@ -133,7 +147,7 @@ def review_diff(spec_text: str, diff_text: str, changed_files: list) -> dict:
         },
         json={
             "model": "claude-sonnet-4-6",
-            "max_tokens": 1500,
+            "max_tokens": 4000,
             "system": REVIEW_SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": user_content}],
         },
@@ -142,6 +156,10 @@ def review_diff(spec_text: str, diff_text: str, changed_files: list) -> dict:
     resp.raise_for_status()
     data = resp.json()
     text = "".join(block.get("text", "") for block in data.get("content", []))
+    stop_reason = data.get("stop_reason")
+
+    if stop_reason == "max_tokens":
+        print("[Stage 4] 警告：回覆被 max_tokens 截斷，將嘗試搶救判定結果")
 
     # 模型偶爾還是會包 markdown 程式碼框，容錯處理
     cleaned = text.strip()
@@ -152,23 +170,76 @@ def review_diff(spec_text: str, diff_text: str, changed_files: list) -> dict:
 
     try:
         result = json.loads(cleaned)
+        result.setdefault("code_explanation",
+                          {"overview": "（本次未產生程式說明）", "functions": []})
+        result["parse_failed"] = False
+        return result
     except json.JSONDecodeError:
-        # 解析失敗時不要猜，直接標成需要人工介入
-        return {
-            "meets_spec": False,
-            "unmet_conditions": [],
-            "violations": [],
-            "notes": f"審查結果無法解析為 JSON，需人工檢視。原始回覆：{text[:500]}",
-            "code_explanation": {"overview": "（審查結果解析失敗，無法產生程式說明）",
-                                 "functions": []},
-            "parse_failed": True,
-        }
+        pass
 
-    result.setdefault("code_explanation", {"overview": "（本次未產生程式說明）", "functions": []})
-    result["parse_failed"] = False
+    # 解析失敗時的搶救：判定欄位（meets_spec / unmet_conditions / violations / notes）
+    # 都排在 code_explanation 前面，所以就算尾端被截斷，前面的判定通常是完整的。
+    # 與其把一個有效的判定當成失敗丟掉，不如救回來並明白標示是截斷的。
+    salvaged = _salvage_verdict(cleaned, text, stop_reason)
+    if salvaged:
+        return salvaged
+
+    return {
+        "meets_spec": False,
+        "unmet_conditions": [],
+        "violations": [],
+        "notes": f"審查結果無法解析，需人工檢視。原始回覆：{text[:800]}",
+        "code_explanation": {"overview": "（審查結果解析失敗，無法產生程式說明）",
+                             "functions": []},
+        "parse_failed": True,
+    }
     if truncated:
         result["notes"] = (result.get("notes", "") + "（註：diff 過長已截斷，審查可能不完整）")
     return result
+
+
+def _salvage_verdict(cleaned: str, raw_text: str, stop_reason: str = None) -> dict:
+    """
+    從被截斷的 JSON 裡搶救判定結果。
+
+    為什麼值得做：judgement 欄位都排在 code_explanation 之前，
+    截斷通常只影響說明文字，不影響「通過或不通過」這個結論。
+    把有效判定當成解析失敗丟掉，會讓使用者以為改動有問題，
+    而且 Codex 的產出會白白浪費。
+    """
+    m = re.search(r'"meets_spec"\s*:\s*(true|false)', cleaned)
+    if not m:
+        return None
+
+    meets = m.group(1) == "true"
+
+    def _arr(key):
+        am = re.search(r'"%s"\s*:\s*\[(.*?)\]' % key, cleaned, re.S)
+        if not am:
+            return []
+        return [x.strip().strip('"') for x in am.group(1).split('",') if x.strip().strip('", ')]
+
+    nm = re.search(r'"notes"\s*:\s*"(.*?)"\s*,\s*"code_explanation"', cleaned, re.S)
+    notes = nm.group(1) if nm else "（notes 欄位無法解析）"
+
+    om = re.search(r'"overview"\s*:\s*"(.*?)(?:"|$)', cleaned, re.S)
+    overview = om.group(1) if om else "（說明被截斷）"
+
+    suffix = "（註：審查回覆被截斷，判定結果由部分內容搶救而來，程式說明可能不完整）"
+    if stop_reason == "max_tokens":
+        suffix = "（註：回覆超過長度上限被截斷，" + "判定已搶救，但程式說明不完整）"
+
+    print(f"[Stage 4] 已從截斷的回覆中搶救判定：{'達標' if meets else '未達標'}")
+
+    return {
+        "meets_spec": meets,
+        "unmet_conditions": _arr("unmet_conditions"),
+        "violations": _arr("violations"),
+        "notes": notes + suffix,
+        "code_explanation": {"overview": overview, "functions": []},
+        "parse_failed": False,
+        "truncated": True,
+    }
 
 
 def run_stage4(spec_text: str, base_branch: str = "main") -> dict:
