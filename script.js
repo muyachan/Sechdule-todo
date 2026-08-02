@@ -557,7 +557,8 @@ addTodoFormEl.addEventListener("submit", (e) => {
 /**
  * 讀取待辦事項。
  *
- * 這是全app唯一的 todos 讀取點，`archived_at is null` 的過濾條件只寫在這裡，
+ * 這是全app唯一的 todos 讀取點；共用過濾條件定義在
+ * scripts/todo-query-filters.js，
  * 月曆圓點／當日清單／全部待辦畫面三處都吃同一份 todos 陣列，
  * 不需要（也不應該）各自再加條件。
  *
@@ -566,13 +567,14 @@ addTodoFormEl.addEventListener("submit", (e) => {
 async function fetchTodos(options = {}) {
   if (!currentUser) return;
   todoLoadingEl.hidden = false;
-  const { data, error } = await supabaseClient
+  const { applyActiveTodoFilter } = await import("./scripts/todo-query-filters.js");
+  const query = supabaseClient
     .from("todos")
     .select("*")
     // RLS 已限制只會回傳自己的資料，這裡再明確過濾一次，語意更清楚。
-    .eq("user_id", currentUser.id)
-    // 已封存的項目不再顯示（資料仍保留在資料庫中）。
-    .is("archived_at", null);
+    .eq("user_id", currentUser.id);
+  // 已封存的項目不再顯示（資料仍保留在資料庫中）。
+  const { data, error } = await applyActiveTodoFilter(query);
   todoLoadingEl.hidden = true;
 
   if (error) {
