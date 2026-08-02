@@ -9,6 +9,10 @@ on:
   # 保留手動觸發，方便隨時測試。
   workflow_dispatch:
 
+concurrency:
+  group: daily-reminder
+  cancel-in-progress: false
+  
 jobs:
   notify:
     runs-on: ubuntu-latest
