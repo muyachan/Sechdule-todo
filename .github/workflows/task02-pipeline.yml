@@ -1,0 +1,156 @@
+# ============================================================
+# Task02 自動協作管線（跑在正式 repo Sechdule-todo）
+#
+# 前置設定：
+#   1. Secrets：ANTHROPIC_API_KEY、OPENAI_API_KEY
+#   2. Settings → Actions → General → Workflow permissions
+#      勾選「Allow GitHub Actions to create and approve pull requests」
+#   3. repo 根目錄要有 .gitignore 排除 __pycache__
+#
+# 重要：本 workflow 不會、也無權修改 .github/ 底下任何檔案。
+# daily-reminder.yml 的 concurrency 設定需由使用者手動加上。
+# ============================================================
+
+name: Task02 - Daily Reminder Fix
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: task02-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install requests python-docx
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Codex login
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: printenv OPENAI_API_KEY | codex login --with-api-key
+
+      - name: Create working branch
+        run: |
+          git checkout -b fix/daily-reminder-archived
+          git config user.name "pipeline-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: Run pipeline (Stage 2 to 5)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python3 .pipeline/run_task02.py
+
+      # 安全檢查：確認 Codex 沒有動到禁止的路徑。
+      # 這是程式層的最後一道防線，不依賴 AI 自己守規矩。
+      - name: Verify no forbidden paths were touched
+        if: always()
+        run: |
+          set -e
+          CHANGED=$(git diff --cached --name-only main)
+          echo "本次變更的檔案："
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -E '^\.github/|^\.pipeline/|^supabase/|\.sql$'; then
+            echo "偵測到禁止路徑被修改，中止流程"
+            exit 1
+          fi
+          echo "路徑檢查通過"
+
+      # 不管 Stage 4 判定通過與否都建立 draft PR。
+      # 理由：Codex 已經做完事了，把成果丟掉等於白花錢，
+      # 而且審查未通過時更需要人眼看一下到底哪裡不對。
+      # draft PR 不可能被誤按合併，風險為零。
+      - name: Commit and open draft PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 沒有任何變更就沒必要開 PR（例如 Stage 2 就被擋下）
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "工作目錄沒有變更，略過建立 PR"
+            exit 0
+          fi
+
+          VERDICT=$(cat stage4_verdict.txt 2>/dev/null || echo "UNKNOWN")
+          if [ "$VERDICT" = "PASS" ]; then
+            PREFIX="[自動·已通過審查]"
+          else
+            PREFIX="[自動·審查未通過，請人工檢視]"
+          fi
+
+          git add -A
+          git commit -m "fix: 每日提醒排除已封存的待辦事項"
+          git push --force origin fix/daily-reminder-archived
+
+          if gh pr view fix/daily-reminder-archived --json number >/dev/null 2>&1; then
+            echo "已存在 PR，本次只更新分支內容"
+            gh pr comment fix/daily-reminder-archived \
+              --body "管線重新執行，分支內容已更新。審查判定：$VERDICT"
+          else
+            gh pr create \
+              --draft \
+              --title "$PREFIX 每日提醒排除已封存的待辦事項" \
+              --body "由自動協作管線產生。審查判定：$VERDICT。合併前請看 completion-report artifact 裡的完成報告。" \
+              --base main \
+              --head fix/daily-reminder-archived
+          fi
+
+      - name: Upload pipeline report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-report
+          path: pipeline_report.json
+          retention-days: 7
+
+      - name: Upload Word report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: completion-report
+          path: 完成報告.docx
+          retention-days: 30
+
+  secret-scan:
+    needs: run-pipeline
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Scan for leaked secret prefixes
+        run: |
+          set -e
+          echo "掃描 artifact 內容有無金鑰前綴..."
+          if grep -R -E "sk-ant-|sb_secret_|sk-[A-Za-z0-9]{20,}" artifacts/; then
+            echo "偵測到疑似 Secrets 明文，請立即檢查並撤換金鑰"
+            exit 1
+          else
+            echo "未偵測到已知金鑰前綴"
+          fi
