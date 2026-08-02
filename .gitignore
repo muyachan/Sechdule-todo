@@ -6,3 +6,8 @@ node_modules/
 # ⚠️ 這裡面會有 service_role 金鑰與 VAPID 私鑰，絕對不能進 repo。
 .env
 .env.local
+__pycache__/
+*.pyc
+*.pyo
+pipeline_report.json
+完成報告.docx
