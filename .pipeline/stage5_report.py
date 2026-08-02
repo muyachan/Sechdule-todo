@@ -220,7 +220,9 @@ def build_report(
             run.bold = True
             run.font.size = Pt(11)
 
-            for label, key in (("負責什麼", "purpose"), ("怎麼做的", "how"), ("為什麼這樣寫", "note")):
+            # how 欄位已移除（2026-08-02），改為只有 purpose 與 note，
+            # 保留 how 的相容處理，讓舊報告資料也能正常呈現
+            for label, key in (("負責什麼", "purpose"), ("怎麼做的", "how"), ("要注意什麼", "note")):
                 value = (fn.get(key) or "").strip()
                 if not value or value == "—":
                     continue
