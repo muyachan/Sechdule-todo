@@ -28,15 +28,16 @@
 
 // 每次調整下面 APP_SHELL 清單或快取邏輯時，把版本號 +1，
 // 讓使用者的瀏覽器建立新的快取、清掉舊的。
-const CACHE_NAME = "schedule-todo-shell-v16";
+const CACHE_NAME = "schedule-todo-shell-v17";
 
 // 需要跟 index.html 裡的 ?v=N 保持一致，否則快取到的會是舊版檔案。
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=28",
-  "./config.js?v=28",
-  "./script.js?v=28",
+  "./style.css?v=29",
+  "./config.js?v=29",
+  "./script.js?v=29",
+  "./scripts/todo-query-filters.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
