@@ -1,3 +1,9 @@
+-- 執行紀錄（2026-08-04）：
+-- 實際執行時發現 production 已存在 DELETE policy「使用者只能刪除自己的待辦」，
+-- 內容為 (auth.uid() = user_id)，與本檔要建立的 todos_delete_own 功能相同。
+-- 因此本檔的 create policy 區塊與 existing_delete_policy_count 檢查均未執行，
+-- 只執行了外鍵變更（NO ACTION → SET NULL），已驗證生效。
+-- 本檔照原樣重跑會失敗，這是預期行為。
 -- ============================================================================
 -- Migration 0003: todos permanent deletion support
 -- ============================================================================
