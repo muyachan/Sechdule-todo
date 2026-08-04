@@ -1,0 +1,220 @@
+# ============================================================
+# 自動協作管線（通用版）
+#
+# 使用方式：
+#   1. 開一個 GitHub Issue，把需求規格整段貼進 Issue 內容
+#   2. 給這個 Issue 加上 run-pipeline 標籤
+#   3. 管線自動開始執行，完成後會在 Issue 底下留言回報
+#
+# 也可以手動觸發：Actions → Run workflow → 填入 Issue 編號
+#
+# 前置設定（做過一次就好）：
+#   - Secrets：ANTHROPIC_API_KEY、OPENAI_API_KEY
+#   - Settings → Actions → General → Workflow permissions
+#     勾選「Allow GitHub Actions to create and approve pull requests」
+#   - 建立一個名為 run-pipeline 的 Issue 標籤
+# ============================================================
+
+name: Auto Collaboration Pipeline
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: '要執行的 Issue 編號（只填數字）'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  run-pipeline:
+    # 只有加上 run-pipeline 標籤才執行，其他標籤一律忽略
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'run-pipeline'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 從 Issue 取出規格內容與標題。
+      # 用檔案而非直接塞環境變數，避免規格內容裡的特殊字元
+      # （引號、反引號、$）在 shell 展開時出問題。
+      - name: Read spec from issue
+        id: spec
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ISSUE_NUM="${{ inputs.issue_number }}"
+          else
+            ISSUE_NUM="${{ github.event.issue.number }}"
+          fi
+          echo "issue_number=$ISSUE_NUM" >> "$GITHUB_OUTPUT"
+
+          gh issue view "$ISSUE_NUM" --json body --jq .body > /tmp/task_spec.md
+          gh issue view "$ISSUE_NUM" --json title --jq .title > /tmp/task_title.txt
+
+          if [ ! -s /tmp/task_spec.md ]; then
+            echo "Issue #$ISSUE_NUM 的內容是空的，沒有規格可執行"
+            exit 1
+          fi
+
+          echo "規格長度：$(wc -c < /tmp/task_spec.md) 字元"
+          echo "任務標題：$(cat /tmp/task_title.txt)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install requests python-docx
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Codex login
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: printenv OPENAI_API_KEY | codex login --with-api-key
+
+      - name: Create working branch
+        run: |
+          git checkout -b "auto/issue-${{ steps.spec.outputs.issue_number }}"
+          git config user.name "pipeline-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: Run pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          export TASK_SPEC="$(cat /tmp/task_spec.md)"
+          export TASK_TITLE="$(cat /tmp/task_title.txt)"
+          export TASK_ID="issue-${{ steps.spec.outputs.issue_number }}"
+          python3 .pipeline/run_pipeline.py
+
+      # 程式層的硬檢查，不依賴 AI 自己守規矩
+      - name: Verify no forbidden paths were touched
+        if: always()
+        run: |
+          set -e
+          git add -A
+          CHANGED=$(git diff --cached --name-only main || true)
+          echo "本次變更的檔案："
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -E '^\.github/|^\.pipeline/|^supabase/|\.sql$'; then
+            echo "偵測到禁止路徑被修改，中止流程"
+            exit 1
+          fi
+          echo "路徑檢查通過"
+
+      - name: Commit and open draft PR
+        if: always()
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="auto/issue-${{ steps.spec.outputs.issue_number }}"
+
+          if [ -z "$(git status --porcelain)" ] && git diff --cached --quiet; then
+            echo "工作目錄沒有變更，略過建立 PR"
+            echo "pr_url=（無變更，未建立 PR）" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERDICT=$(cat stage4_verdict.txt 2>/dev/null || echo "UNKNOWN")
+          if [ "$VERDICT" = "PASS" ]; then
+            PREFIX="[自動·已通過審查]"
+          else
+            PREFIX="[自動·審查未通過，請人工檢視]"
+          fi
+
+          TITLE="$(cat /tmp/task_title.txt)"
+          git add -A
+          git commit -m "auto: $TITLE (#${{ steps.spec.outputs.issue_number }})"
+          git push --force origin "$BRANCH"
+
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            gh pr comment "$BRANCH" --body "管線重新執行，分支內容已更新。審查判定：$VERDICT"
+            PR_URL=$(gh pr view "$BRANCH" --json url --jq .url)
+          else
+            PR_URL=$(gh pr create \
+              --draft \
+              --title "$PREFIX $TITLE" \
+              --body "由自動協作管線產生，來源 Issue #${{ steps.spec.outputs.issue_number }}。審查判定：$VERDICT。合併前請看 completion-report artifact 裡的完成報告。" \
+              --base main \
+              --head "$BRANCH")
+          fi
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: completion-report
+          path: |
+            完成報告.docx
+            pipeline_report.json
+          retention-days: 30
+
+      # 回到 Issue 留言，這樣你不用去 Actions 頁面找結果
+      - name: Report back to issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERDICT=$(cat stage4_verdict.txt 2>/dev/null || echo "UNKNOWN")
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue comment "${{ steps.spec.outputs.issue_number }}" --body "$(cat <<EOF
+          管線執行完畢。
+
+          - 審查判定：**$VERDICT**
+          - Pull Request：${{ steps.pr.outputs.pr_url }}
+          - 完成報告（docx）：[到這次執行紀錄下載]($RUN_URL) 的 completion-report
+
+          合併前請逐行看過 diff，並在實機測試後才合併。
+          EOF
+          )"
+
+      # 執行完自動移除標籤，避免不小心重複觸發
+      - name: Remove trigger label
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit "${{ steps.spec.outputs.issue_number }}" --remove-label "run-pipeline" || true
+
+  secret-scan:
+    needs: run-pipeline
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Scan for leaked secret prefixes
+        run: |
+          set -e
+          echo "掃描 artifact 內容有無金鑰前綴..."
+          if grep -R -E "sk-ant-|sb_secret_|sk-[A-Za-z0-9]{20,}" artifacts/; then
+            echo "偵測到疑似 Secrets 明文，請立即檢查並撤換金鑰"
+            exit 1
+          else
+            echo "未偵測到已知金鑰前綴"
+          fi
