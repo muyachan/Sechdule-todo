@@ -116,7 +116,9 @@ jobs:
           CHANGED=$(git diff --cached --name-only main || true)
           echo "本次變更的檔案："
           echo "$CHANGED"
-          if echo "$CHANGED" | grep -E '^\.github/|^\.pipeline/|^supabase/|\.sql$'; then
+          # 註：.sql 刻意不在此列。AI 寫 migration 檔給你審查是正常流程，
+          # 危險的是「執行 SQL」，而管線沒有資料庫憑證，本來就做不到。
+          if echo "$CHANGED" | grep -E '^\.github/|^\.pipeline/|^supabase/'; then
             echo "偵測到禁止路徑被修改，中止流程"
             exit 1
           fi
