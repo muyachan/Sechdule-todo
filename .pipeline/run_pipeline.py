@@ -33,13 +33,22 @@ from codex_trigger import trigger_codex
 from stage4_reviewer import run_stage4
 
 # 這份禁止清單是程式層的硬邊界，不隨任務改變。
-# .github/ 是因為 GITHUB_TOKEN 沒有修改 workflow 的權限，改了 push 會失敗；
-# .pipeline/ 是管線自己的程式，不該被它修改。
+#   .github/   GITHUB_TOKEN 沒有修改 workflow 的權限，改了 push 會失敗
+#   .pipeline/ 管線自己的程式，不該被它修改
+#   supabase/  Edge Function 合併到 main 會自動部署，風險等級不同
+#
+# 2026-08-02 修正：原本這裡列了「任何 .sql 檔」，那是錯的。
+# 該條限制的本意是「SQL 由使用者自行執行」，但被寫成「不准寫 SQL 檔」，
+# 兩者完全不同：
+#   - AI 執行 SQL → 危險，且管線沒有資料庫憑證，本來就做不到
+#   - AI 寫一支 SQL 檔進 PR → 安全，這正是 AGENTS.md 規定的流程
+#     （AI 給 SQL → 使用者在 Supabase Dashboard 執行 → 確認後才合併程式）
+# 這個矛盾導致 Task03-A 完全無法執行：任務要求產生 .sql，
+# 限制卻禁止碰 .sql，Codex 遵守限制所以什麼都沒做。
 FORBIDDEN_PATHS = [
     ".github/",
     ".pipeline/",
     "supabase/",
-    "任何 .sql 檔（SQL 一律由使用者自行在 Supabase 執行）",
 ]
 
 # 允許範圍改由規格自己定義，這裡只指路，維持單一事實來源
