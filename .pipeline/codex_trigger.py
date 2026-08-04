@@ -112,7 +112,12 @@ def trigger_codex(task_id: str, spec_text: str, allowed_files: list,
         return {"stage3_ok": False, "reason": "codex_failed", **result}
 
     if not has_uncommitted_changes():
+       if not has_uncommitted_changes():
         print("[Stage 3] Codex 回報成功，但工作目錄沒有任何變更")
+        print("[Stage 3] 以下是 Codex 的完整輸出，通常會說明它為什麼沒有動手：")
+        print("-" * 60)
+        print(result["stdout"][-4000:])
+        print("-" * 60)
         return {"stage3_ok": False, "reason": "no_changes_made", **result}
 
     print("[Stage 3] Codex 完成，已產生變更")
