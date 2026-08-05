@@ -385,6 +385,7 @@ function renderDaySection() {
     checkbox.type = "checkbox";
     checkbox.className = "day-check";
     checkbox.checked = Boolean(todo.completedAt);
+    checkbox.disabled = isPendingDelete(todo.id);
     checkbox.setAttribute(
       "aria-label",
       `${todo.completedAt ? "取消完成" : "標記完成"}：${todo.title}`
@@ -402,14 +403,18 @@ function renderDaySection() {
     title.textContent = todo.title;
     main.appendChild(title);
     if (isPendingArchive(todo.id)) main.appendChild(buildUndoBar(todo.id));
+    if (isPendingDelete(todo.id)) {
+      main.appendChild(buildUndoBar(todo.id, "已刪除", undoDelete));
+    }
 
     const archiveBtn = document.createElement("button");
     archiveBtn.type = "button";
     archiveBtn.className = "day-delete";
     archiveBtn.textContent = "✕";
-    archiveBtn.setAttribute("aria-label", `封存：${todo.title}`);
-    archiveBtn.title = "封存";
-    archiveBtn.addEventListener("click", () => archiveTodo(todo.id));
+    archiveBtn.disabled = isPendingArchive(todo.id) || isPendingDelete(todo.id);
+    archiveBtn.setAttribute("aria-label", `永久刪除：${todo.title}`);
+    archiveBtn.title = "永久刪除";
+    archiveBtn.addEventListener("click", () => startDeleteCountdown(todo.id));
 
     li.append(checkbox, main, archiveBtn);
     dayListEl.appendChild(li);
@@ -688,6 +693,76 @@ async function archiveTodo(id) {
   await fetchTodos();
 }
 
+/**
+ * 永久刪除待辦事項，並確認資料庫實際刪除恰好一列。
+ * DELETE policy 或其他 RLS 條件擋下請求時，PostgREST 可能不回傳 error，
+ * 因此必須用 select() 的回傳列數辨識靜默失敗。
+ *
+ * @returns {Promise<boolean>} 是否成功刪除一列
+ */
+async function deleteTodo(id) {
+  const { data, error } = await supabaseClient
+    .from("todos")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", currentUser.id)
+    .select("id");
+
+  if (error) {
+    console.error("永久刪除待辦事項失敗：", error);
+    alert(`永久刪除待辦事項失敗：${error.message}`);
+    await fetchTodos();
+    return false;
+  }
+  if (!data || data.length !== 1) {
+    const affectedRows = data?.length ?? 0;
+    console.error(`永久刪除待辦事項失敗：預期刪除 1 列，實際刪除 ${affectedRows} 列`);
+    alert("永久刪除待辦事項失敗：找不到可刪除的待辦，請重新整理後再試。");
+    await fetchTodos();
+    return false;
+  }
+
+  await fetchTodos();
+  return true;
+}
+
+/* ===========================================================================
+ * X → 3 秒後永久刪除（含撤銷）
+ * ========================================================================== */
+
+/** @type {Map<string, {timerId:number}>} 正在倒數永久刪除的項目 */
+const pendingDelete = new Map();
+
+function isPendingDelete(id) {
+  return pendingDelete.has(id);
+}
+
+/** 按 X 後只啟動倒數；倒數結束前不送出 DELETE。 */
+function startDeleteCountdown(id) {
+  if (isPendingArchive(id) || isPendingDelete(id)) return;
+
+  const timerId = setTimeout(() => {
+    pendingDelete.delete(id);
+    document
+      .querySelectorAll(`[data-id="${CSS.escape(id)}"]`)
+      .forEach((el) => el.classList.add("is-archiving"));
+
+    setTimeout(() => deleteTodo(id), ARCHIVE_ANIM_MS);
+  }, ARCHIVE_DELAY_MS);
+
+  pendingDelete.set(id, { timerId });
+  renderTodos();
+}
+
+/** 撤銷 X 操作：只取消本機倒數，不送出任何資料庫請求。 */
+function undoDelete(id) {
+  const pending = pendingDelete.get(id);
+  if (!pending) return;
+  clearTimeout(pending.timerId);
+  pendingDelete.delete(id);
+  renderTodos();
+}
+
 /* ==========================================================================
  * 勾選 → 3 秒後自動封存（含撤銷）
  * --------------------------------------------------------------------------
@@ -766,13 +841,13 @@ async function undoComplete(id) {
 }
 
 /** 建立「已完成 · 撤銷」小列（倒數中顯示）。 */
-function buildUndoBar(id) {
+function buildUndoBar(id, labelText = "已完成", undoHandler = undoComplete) {
   const bar = document.createElement("div");
   bar.className = "undo-bar";
 
   const label = document.createElement("span");
   label.className = "undo-label";
-  label.textContent = "已完成";
+  label.textContent = labelText;
 
   const sep = document.createElement("span");
   sep.className = "undo-sep";
@@ -785,7 +860,7 @@ function buildUndoBar(id) {
   btn.textContent = "撤銷";
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    undoComplete(id);
+    undoHandler(id);
   });
 
   bar.append(label, sep, btn);
@@ -949,7 +1024,7 @@ function sortForDisplay(list) {
 
 /**
  * 待辦資料變動後的統一重畫入口。
- * 所有 CRUD（fetchTodos / addTodo / updateTodo / archiveTodo）都呼叫這個函式，
+ * 所有 CRUD（fetchTodos / addTodo / updateTodo / archiveTodo / deleteTodo）都呼叫這個函式，
  * 由它扇出去更新三個會顯示待辦的畫面，確保彼此同步。
  */
 function renderTodos() {
@@ -995,7 +1070,7 @@ function renderTodoList() {
  * 待辦事項一覽的一列：「勾選框 ｜ 標題＋截止日期 ｜ ✕」。
  *
  * 標題點下去就地變成輸入框（不開 modal）；截止日期顯示在標題下方第二行，
- * 是唯讀的，沒有任何編輯入口。✕ 是封存（archived_at），不是刪除。
+ * 是唯讀的，沒有任何編輯入口。✕ 會在 3 秒撤銷視窗後永久刪除。
  */
 function buildDisplayRow(todo) {
   const wrapper = document.createDocumentFragment();
@@ -1009,7 +1084,7 @@ function buildDisplayRow(todo) {
   checkbox.type = "checkbox";
   checkbox.checked = Boolean(todo.completedAt);
   // 編輯中不可勾選：避免「改字」與「完成→倒數封存」兩件事同時發生。
-  checkbox.disabled = editing;
+  checkbox.disabled = editing || isPendingDelete(todo.id);
   checkbox.setAttribute(
     "aria-label",
     `${todo.completedAt ? "取消完成" : "標記完成"}：${todo.title}`
@@ -1050,16 +1125,19 @@ function buildDisplayRow(todo) {
 
   // 倒數中：再往下顯示「已完成 · 撤銷」。
   if (pending) main.appendChild(buildUndoBar(todo.id));
+  if (isPendingDelete(todo.id)) {
+    main.appendChild(buildUndoBar(todo.id, "已刪除", undoDelete));
+  }
 
   const archiveBtn = document.createElement("button");
   archiveBtn.type = "button";
   archiveBtn.className = "todo-archive";
   archiveBtn.textContent = "✕";
-  // 編輯中不可封存：同上，避免這一列一邊被改字一邊被移除。
-  archiveBtn.disabled = editing;
-  archiveBtn.setAttribute("aria-label", `封存：${todo.title}`);
-  archiveBtn.title = "封存";
-  archiveBtn.addEventListener("click", () => archiveTodo(todo.id));
+  // 編輯或其他倒數中不可刪除，避免同一列同時進行衝突操作。
+  archiveBtn.disabled = editing || pending || isPendingDelete(todo.id);
+  archiveBtn.setAttribute("aria-label", `永久刪除：${todo.title}`);
+  archiveBtn.title = "永久刪除";
+  archiveBtn.addEventListener("click", () => startDeleteCountdown(todo.id));
 
   const container = document.createElement("div");
   container.style.display = "contents";
