@@ -1,0 +1,36 @@
+# ============================================================
+# 前端版本一致性檢查
+#
+# 在每個對 main 的 PR 上自動執行，檢查版本號與快取清單有沒有漏改。
+#
+# 它不會幫你改任何東西——依 AGENTS.md 的規定，版本號由
+# .pipeline/bump_versions.py 專責管理，其他地方一律不得自行修改。
+# 它只負責在你漏掉的時候讓 CI 變紅，擋在合併之前。
+#
+# 這個檢查對「管線產生的 PR」和「你手動改的 PR」一視同仁，
+# 所以不管改動從哪裡來都擋得住。
+# ============================================================
+
+name: Frontend Version Check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check frontend version consistency
+        run: python3 .pipeline/check_frontend_versions.py --base origin/main
