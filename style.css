@@ -2038,13 +2038,17 @@ input.todo-title-input:focus {
 .btn:active,
 .cal-cell:active,
 .cal-jump-month:active,
-.todo-item:active,
-.day-item:active,
 .day-add-btn:active,
 .icon-btn:active,
 .todo-archive:active,
 .day-delete:active {
   transform: scale(0.96);
+}
+
+/* 清單列按壓時只改背景，避免縮放造成勾選框離開滑鼠落點。 */
+.todo-item:active,
+.day-item:active {
+  background: var(--color-bg-subtle);
 }
 
 /* 待辦列本身可點（點文字進編輯），press 手感需要有 transition 才會回彈。 */
@@ -2099,8 +2103,6 @@ input.todo-title-input:focus {
   .btn:active,
   .cal-cell:active,
   .cal-jump-month:active,
-  .todo-item:active,
-  .day-item:active,
   .day-add-btn:active,
   .icon-btn:active,
   .todo-archive:active,
