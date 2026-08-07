@@ -63,13 +63,19 @@ def run_codex(prompt: str, max_retries: int = 0) -> dict:
     """
     try:
         codex_path = shutil.which("codex") or "codex"
+        # prompt 改用 stdin 傳遞，不當成命令列參數。
+        # shutil.which("codex") 在 Windows 上解析到的是 codex.cmd，
+        # 執行 .cmd 會經過 cmd.exe 轉一手，多行的參數會在換行處被截斷，
+        # Codex 只會收到 prompt 的第一行。改用 "-" 代表「從 stdin 讀」，
+        # 同時也繞開 cmd.exe 命令列約 8191 字元的長度上限。
         result = subprocess.run(
             [
                 codex_path, "exec",
                 "--sandbox", "workspace-write",
                 "-c", 'model_reasoning_effort="medium"',
-                prompt,
+                "-",
             ],
+            input=prompt,
             capture_output=True,
             encoding="utf-8",
             errors="replace",
