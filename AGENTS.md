@@ -29,7 +29,12 @@
 ## Required workflow
 
 - Read the repository and this file before starting a task.
-- Present a plan before modifying files.
+- Present an implementation plan before modifying files when working
+  interactively. This does not apply to single-turn, non-interactive runs:
+  when a specification already states the objective, the minimum required
+  outcome, explicit non-goals, and acceptance criteria, that specification
+  constitutes the approved plan, and the agent must proceed directly with
+  the changes.
 - Verify task assumptions against the current code and environment.
 - Work on one task phase at a time.
 - Do not expand scope or modify unrelated files.
