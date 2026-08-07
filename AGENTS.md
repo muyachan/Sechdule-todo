@@ -114,11 +114,14 @@
 - When changing static frontend assets, inspect resource `?v=` values in
   `index.html`.
 - Inspect the corresponding App Shell versions in `sw.js`.
+- Frontend asset version numbers (`?v=N` in index.html and CACHE_NAME in
+  sw.js) are managed exclusively by `.pipeline/bump_versions.py`. Agents
+  must not add, modify, or bump these values as part of any other task,
+  even when the task itself changes frontend files.
 - When changing the App Shell, Service Worker, or content of an existing icon
-  filename, evaluate and update `CACHE_NAME` when needed.
-- Do not update versions mechanically; explain why each relevant version or
-  `CACHE_NAME` was or was not changed.
-- Do not change frontend versions during non-frontend tasks.
+  filename, evaluate whether `?v=` or `CACHE_NAME` would need to be bumped,
+  and state that assessment and the reasoning behind it in the completion
+  report. Report the assessment; do not apply the change.
 
 ## Testing and evidence
 
@@ -158,6 +161,6 @@ Include at least:
 - Tests not run.
 - Incomplete work and known limitations.
 - Items requiring Supabase, GitHub Actions, deployment, or device confirmation.
-- Whether frontend versions and `CACHE_NAME` changed, with reasons.
+- Whether a `?v=` or `CACHE_NAME` bump is required, with reasoning.
 - Whether the task used Secrets, executed SQL, or deployed anything.
 - Steps the user must complete before merging.
