@@ -12,6 +12,7 @@ Stage 3：真實觸發 Codex
 """
 
 import os
+import shutil
 import subprocess
 
 
@@ -61,10 +62,12 @@ def run_codex(prompt: str, max_retries: int = 0) -> dict:
     有問題應該回報給使用者判斷。
     """
     try:
+        codex_path = shutil.which("codex") or "codex"
         result = subprocess.run(
-            ["codex", "exec", "--sandbox", "workspace-write", prompt],
+            [codex_path, "exec", "--sandbox", "workspace-write", prompt],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=900,  # 15 分鐘上限，避免卡死燒額度
         )
         return {
@@ -92,7 +95,8 @@ def has_uncommitted_changes() -> bool:
     result = subprocess.run(
         ["git", "status", "--porcelain"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     return bool(result.stdout.strip())
 

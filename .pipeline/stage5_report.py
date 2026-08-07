@@ -23,7 +23,9 @@ TAIPEI = timezone(timedelta(hours=8))
 
 
 def _git(args: list) -> str:
-    result = subprocess.run(["git"] + args, capture_output=True, text=True)
+    result = subprocess.run(
+        ["git"] + args, capture_output=True, encoding="utf-8", errors="replace"
+    )
     return result.stdout.strip()
 
 
