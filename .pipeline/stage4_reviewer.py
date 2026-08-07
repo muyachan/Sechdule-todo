@@ -107,7 +107,8 @@ def get_diff(base_branch: str = "main") -> str:
     result = subprocess.run(
         ["git", "diff", "--cached", base_branch],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     return result.stdout
 
@@ -117,7 +118,8 @@ def get_changed_files(base_branch: str = "main") -> list:
     result = subprocess.run(
         ["git", "diff", "--cached", "--name-only", base_branch],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     return [f for f in result.stdout.strip().split("\n") if f]
 
