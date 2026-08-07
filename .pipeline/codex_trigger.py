@@ -64,7 +64,12 @@ def run_codex(prompt: str, max_retries: int = 0) -> dict:
     try:
         codex_path = shutil.which("codex") or "codex"
         result = subprocess.run(
-            [codex_path, "exec", "--sandbox", "workspace-write", prompt],
+            [
+                codex_path, "exec",
+                "--sandbox", "workspace-write",
+                "-c", 'model_reasoning_effort="medium"',
+                prompt,
+            ],
             capture_output=True,
             encoding="utf-8",
             errors="replace",
