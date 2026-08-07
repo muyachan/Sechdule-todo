@@ -34,9 +34,9 @@ const CACHE_NAME = "schedule-todo-shell-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=30",
-  "./config.js?v=30",
-  "./script.js?v=30",
+  "./style.css?v=31",
+  "./config.js?v=31",
+  "./script.js?v=31",
   "./scripts/todo-query-filters.js",
   "./manifest.json",
   "./icons/icon-192.png",
