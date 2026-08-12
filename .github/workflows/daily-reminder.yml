@@ -38,8 +38,8 @@ jobs:
           SUPABASE_URL: "https://qvokiftcyeptmokvrxcp.supabase.co"
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          # Web Push 用的 VAPID 金鑰組。三個都沒設齊時腳本會略過推播、
-          # 只發 Discord，不會讓整個排程失敗。
+          # Web Push 用的 VAPID 金鑰組。三個都沒設齊時腳本會略過推播；
+          # Web Push 與 Discord 各自獨立，一邊沒設定或失敗不會拖垮另一邊。
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
