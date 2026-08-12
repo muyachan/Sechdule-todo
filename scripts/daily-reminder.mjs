@@ -6,9 +6,11 @@
  *   1. 以 Asia/Taipei 時區算出「今天」的日期。
  *   2. 用 Supabase REST API 讀取 todos，篩選「未完成且截止日在今天(含)以前」。
  *   3. 沒有任何待辦就直接結束，兩個管道都不發。
- *   4. 發送到兩個管道（互不影響，其中一邊失敗不會拖垮另一邊）：
- *        a) Discord Webhook —— 既有行為，維持不變。
- *        b) Web Push       —— 推播到所有 revoked_at is null 的 PWA 訂閱。
+ *   4. 發送到兩個管道，Web Push 為主要通道、Discord 為次要通道，
+ *      各自獨立 try/catch，一邊沒設定或失敗都不影響另一邊：
+ *        a) Web Push       —— 推播到所有 revoked_at is null 的 PWA 訂閱。
+ *        b) Discord Webhook —— 既有行為與訊息格式維持不變。
+ *      只有兩邊都失敗才會讓排程回報失敗（exit 1）。
  *
  * 需要的環境變數：
  *   - SUPABASE_URL                 Supabase 專案 URL
@@ -311,10 +313,12 @@ async function main() {
     VAPID_SUBJECT,
   } = process.env;
 
+  // DISCORD_WEBHOOK_URL 不在必要清單裡：Discord 現在是次要通道，
+  // 未設定時應該跟 VAPID 未設定一樣直接略過，而不是讓整支腳本連
+  // Web Push 都跑不到就先炸掉。
   const missing = [
     ["SUPABASE_URL", SUPABASE_URL],
     ["SUPABASE_SERVICE_ROLE_KEY", SUPABASE_SERVICE_ROLE_KEY],
-    ["DISCORD_WEBHOOK_URL", DISCORD_WEBHOOK_URL],
   ]
     .filter(([, v]) => !v)
     .map(([k]) => k);
@@ -339,62 +343,83 @@ async function main() {
     return;
   }
 
-  /* ---------------- Discord（既有行為，維持不變）---------------- */
-  const message = buildMessage(todos, todayStr);
-  console.log("即將發送到 Discord 的訊息：\n" + message);
-  await sendToDiscord(DISCORD_WEBHOOK_URL, message);
-  console.log("✅ 已發送到 Discord。");
-
-  /* ---------------- Web Push ---------------- */
-  // VAPID 三個變數沒設齊就跳過推播，但不讓整個排程失敗——
-  // Discord 那邊已經發出去了，不該因為推播還沒設定好就標記成紅燈。
+  /* ---------------- Web Push（主要通道，優先發送）---------------- */
+  // 跟 Discord 完全獨立：VAPID 沒設齊、抓訂閱失敗、生成文案失敗……
+  // 任何一個環節出錯都只記錄下來，不會讓 Discord 那邊發不出去。
+  // VAPID 未設齊、沒有任何有效訂閱，都視為「這次沒東西可推」，不算失敗。
+  let webPushOk = true;
   const vapidReady = VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY && VAPID_SUBJECT;
   if (!vapidReady) {
     console.log("ℹ️ VAPID 環境變數未設齊，略過 Web Push。");
-    return;
+  } else {
+    try {
+      webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+
+      const subscriptions = await fetchActiveSubscriptions(
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY
+      );
+      console.log(`有效的推播訂閱：${subscriptions.length} 筆`);
+
+      if (subscriptions.length === 0) {
+        console.log("ℹ️ 沒有任何有效訂閱，略過 Web Push。");
+      } else {
+        // 文案優先用 Mia 生成，失敗就用固定格式的退回方案。
+        const fallback = buildFallbackNotification(todos);
+        const miaText = await generateMiaCopy(
+          SUPABASE_URL,
+          SUPABASE_SERVICE_ROLE_KEY,
+          todos
+        );
+
+        const notification = miaText
+          ? { title: fallback.title, body: miaText }
+          : fallback;
+
+        console.log(
+          `推播文案（${miaText ? "Mia 生成" : "退回方案"}）：` +
+            `\n  標題：${notification.title}\n  內文：${notification.body}`
+        );
+
+        const result = await sendWebPush({
+          supabaseUrl: SUPABASE_URL,
+          serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+          subscriptions,
+          notification,
+        });
+
+        console.log(
+          `✅ Web Push 完成：成功 ${result.sent}、` +
+            `刪除失效 ${result.removed}、失敗 ${result.failed}。`
+        );
+      }
+    } catch (err) {
+      webPushOk = false;
+      console.error(`❌ Web Push 發送失敗：${err.message}`);
+    }
   }
 
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-
-  const subscriptions = await fetchActiveSubscriptions(
-    SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY
-  );
-  console.log(`有效的推播訂閱：${subscriptions.length} 筆`);
-
-  if (subscriptions.length === 0) {
-    console.log("ℹ️ 沒有任何有效訂閱，略過 Web Push。");
-    return;
+  /* ---------------- Discord（次要通道，訊息格式維持不變）---------------- */
+  // 未設定 webhook，或發送失敗，都不影響 Web Push（上面已經跑完了）。
+  let discordOk = true;
+  if (!DISCORD_WEBHOOK_URL) {
+    console.log("ℹ️ DISCORD_WEBHOOK_URL 未設定，略過 Discord。");
+  } else {
+    try {
+      const message = buildMessage(todos, todayStr);
+      console.log("即將發送到 Discord 的訊息：\n" + message);
+      await sendToDiscord(DISCORD_WEBHOOK_URL, message);
+      console.log("✅ 已發送到 Discord。");
+    } catch (err) {
+      discordOk = false;
+      console.error(`❌ Discord 發送失敗：${err.message}`);
+    }
   }
 
-  // 文案優先用 Mia 生成，失敗就用固定格式的退回方案。
-  const fallback = buildFallbackNotification(todos);
-  const miaText = await generateMiaCopy(
-    SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
-    todos
-  );
-
-  const notification = miaText
-    ? { title: fallback.title, body: miaText }
-    : fallback;
-
-  console.log(
-    `推播文案（${miaText ? "Mia 生成" : "退回方案"}）：` +
-      `\n  標題：${notification.title}\n  內文：${notification.body}`
-  );
-
-  const result = await sendWebPush({
-    supabaseUrl: SUPABASE_URL,
-    serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
-    subscriptions,
-    notification,
-  });
-
-  console.log(
-    `✅ Web Push 完成：成功 ${result.sent}、` +
-      `刪除失效 ${result.removed}、失敗 ${result.failed}。`
-  );
+  // 只有兩條通道都失敗，才讓這次排程回報失敗。
+  if (!webPushOk && !discordOk) {
+    throw new Error("Web Push 與 Discord 皆發送失敗。");
+  }
 }
 
 // 只有「直接執行這個檔案」時才跑 main()，被 import 測試時不會執行。
